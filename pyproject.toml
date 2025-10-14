@@ -33,4 +33,4 @@ build-backend = "hatchling.build"
 packages = ["src/mkts_backend"]
 
 [project.scripts]
-mkts-backend = "mkts_backend.cli:main"
+mkts-north = "mkts_backend.cli:main"

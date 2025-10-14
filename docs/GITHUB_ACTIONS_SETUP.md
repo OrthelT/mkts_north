@@ -26,10 +26,9 @@ Go to your GitHub repository → Settings → Secrets and variables → Actions,
 
 #### Optional Secrets (for remote database sync)
 
-- `TURSO_MKT_URL` and `TURSO_MKT_TOKEN`
+- `wcmktnorth_url` and `wcmktnorth_token`
 - `TURSO_SDE_URL` and `TURSO_SDE_TOKEN`
 - `TURSO_FITTING_URL` and `TURSO_FITTING_TOKEN`
-- `TURSO_WCMKT2_URL` and `TURSO_WCMKT2_TOKEN`
 
 ### 2. Eve Online ESI Application
 
@@ -156,8 +155,8 @@ Change `retention-days` in the upload-artifact step.
 The refactored project exposes a console script:
 
 ```bash
-uv run mkts-backend            # run market collection
-uv run mkts-backend --history  # include historical data processing
+uv run mkts-north            # run market collection
+uv run mkts-north --history  # include historical data processing
 ```
 
 ## Cost Considerations

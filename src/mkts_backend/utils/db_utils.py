@@ -124,7 +124,7 @@ def restore_doctrines_from_backup(backup_db_path: str, target_db_alias: str = "w
     Restore doctrines table from a backup database file.
 
     Args:
-        backup_db_path: Path to the backup database file (e.g., "backup_wcmkt2.db")
+        backup_db_path: Path to the backup database file (e.g., "backup_wcmktnorth.db")
         target_db_alias: Target database alias to restore to (default: "wcmkt")
     """
     logger.info(f"Starting doctrines restoration from backup: {backup_db_path}")

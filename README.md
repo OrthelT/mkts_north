@@ -47,10 +47,8 @@ Create a `.env` file with the following variables:
 ```env
 CLIENT_ID=<eve_sso_client_id>
 SECRET_KEY=<eve_sso_client_secret>
-TURSO_WCMKT2_URL=turso db url (production)
-TURSO_WCMKT2_TOKEN=turso db auth token (production)
-TURSO_WCMKT3_URL=turso db url (development)
-TURSO_WCMKT3_TOKEN=turso db token (development)
+wcmktnorth_url=turso db url
+wcmktnorth_token=turso db auth token
 TURSO_FITTING_URL=turso fitting db url
 TURSO_FITTING_TOKEN=turso fitting db token
 TURSO_SDE_URL=turso sde db url
@@ -61,10 +59,10 @@ TURSO_SDE_TOKEN=turso sde db url
 
 ```bash
 # Run with market orders only
-uv run mkts-backend
+uv run mkts-north
 
 # Run with historical data processing
-uv run mkts-backend --history
+uv run mkts-north --history
 ```
 
 ## Architecture
@@ -94,11 +92,11 @@ uv run mkts-backend --history
 
 ### Key Settings
 
-- **Structure ID**: `1035466617946` (4-HWWF Keepstar)
-- **Region ID**: `10000003` (The Vale of Silent)
+- **Structure ID**: `1046831245129` (B-9C24 - Maginot Line)
+- **Region ID**: `10000023` (Pure Blind)
 - **Deployment Region**: `10000001` (The Forge)
 - **Deployment System**: `30000072` (Nakah)
-- **Database**: Local SQLite (`wcmkt2.db`) with optional Turso sync
+- **Database**: Local SQLite (`wcmktnorth.db`) with optional Turso sync
 - **Watchlist**: CSV-based item tracking in `databackup/all_watchlist.csv`
 
 ### Google Sheets Integration

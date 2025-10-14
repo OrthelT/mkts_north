@@ -1,0 +1,125 @@
+name: Market Data Collection
+
+on:
+  schedule:
+    # Run every 2 hours without flags
+    - cron: '20 */2 * * *'
+
+  workflow_dispatch: # Allow manual triggering
+    inputs:
+      include_history:
+        description: 'Include historical data processing'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  collect-market-data:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v2
+      with:
+        version: "latest"
+
+    - name: Install dependencies
+      run: uv sync
+
+    - name: Install package (editable)
+      run: uv pip install -e .
+
+    - name: Smoke import check
+      run: |
+        uv run python - << 'PY'
+        import importlib
+        modules = [
+            'mkts_backend',
+            'mkts_backend.cli',
+            'mkts_backend.config.config',
+            'mkts_backend.config.logging_config',
+            'mkts_backend.db.models',
+            'mkts_backend.db.db_handlers',
+            'mkts_backend.db.db_queries',
+            'mkts_backend.esi.esi_requests',
+            'mkts_backend.processing.data_processing',
+            'mkts_backend.utils.utils',
+        ]
+        for m in modules:
+            importlib.import_module(m)
+        print('Import check OK:', ', '.join(modules))
+        PY
+
+    - name: Create required directories
+      run: |
+        mkdir -p logs
+        mkdir -p data
+        mkdir -p databackup
+
+    - name: Set up environment variables
+      run: |
+        echo "CLIENT_ID=${{ secrets.CLIENT_ID }}" >> $GITHUB_ENV
+        echo "SECRET_KEY=${{ secrets.SECRET_KEY }}" >> $GITHUB_ENV
+        echo "TURSO_SDE_URL=${{ secrets.TURSO_SDE_URL }}" >> $GITHUB_ENV
+        echo "TURSO_SDE_TOKEN=${{ secrets.TURSO_SDE_TOKEN }}" >> $GITHUB_ENV
+        echo "TURSO_FITTING_URL=${{ secrets.TURSO_FITTING_URL }}" >> $GITHUB_ENV
+        echo "TURSO_FITTING_TOKEN=${{ secrets.TURSO_FITTING_TOKEN }}" >> $GITHUB_ENV
+        echo "wcmktnorth_url=${{ secrets.WCMKTNORTH_URL }}" >> $GITHUB_ENV
+        echo "wcmktnorth_token=${{ secrets.WCMKTNORTH_TOKEN }}" >> $GITHUB_ENV
+
+    #- name: Set up Google Service Account
+      #run: not currently implemented. add reference to secrets.GOOGLE_SHEET_KEY to use.
+
+    - name: Set up EVE SSO refresh token
+      run: |
+        echo "REFRESH_TOKEN=${{ secrets.REFRESH_TOKEN }}" >> $GITHUB_ENV
+
+    - name: Debug environment variables
+      run: |
+        echo "Checking if required environment variables are set:"
+        echo "CLIENT_ID is set: $([ -n "$CLIENT_ID" ] && echo "YES" || echo "NO")"
+        echo "SECRET_KEY is set: $([ -n "$SECRET_KEY" ] && echo "YES" || echo "NO")"
+        echo "REFRESH_TOKEN is set: $([ -n "$REFRESH_TOKEN" ] && echo "YES" || echo "NO")"
+        echo "REFRESH_TOKEN length: ${#REFRESH_TOKEN}"
+        echo "wcmktnorth_url is set: $([ -n "$wcmktnorth_url" ] && echo "YES" || echo "NO")"
+        echo "wcmktnorth_token is set: $([ -n "$wcmktnorth_token" ] && echo "YES" || echo "NO")"
+        echo "TURSO_SDE_URL is set: $([ -n "$TURSO_SDE_URL" ] && echo "YES" || echo "NO")"
+        echo "TURSO_SDE_TOKEN is set: $([ -n "$TURSO_SDE_TOKEN" ] && echo "YES" || echo "NO")"
+        echo "TURSO_FITTING_URL is set: $([ -n "$TURSO_FITTING_URL" ] && echo "YES" || echo "NO")"
+        echo "TURSO_FITTING_TOKEN is set: $([ -n "$TURSO_FITTING_TOKEN" ] && echo "YES" || echo "NO")"
+
+    - name: Run market data collection
+      run: |
+        if [ "${{ github.event.inputs.include_history }}" = "true" ]; then
+          uv run mkts-north --history
+        elif [ "$(date -u +%H)" = "12" ]; then
+          # Run with --history flag at 12:00 UTC
+          uv run mkts-north --history
+        else
+          # Run without flags for all other scheduled runs
+          uv run mkts-north
+        fi
+      timeout-minutes: 30
+
+    - name: Upload logs as artifacts
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: market-data-logs-${{ github.run_number }}
+        path: logs/
+        retention-days: 7
+
+    - name: Clean up sensitive files
+      if: always()
+      run: |
+        rm -f wcdoctrines-1f629d861c2f.json
+        rm -f token.json
+        rm -f .env

@@ -7,12 +7,12 @@ logger = configure_logging(__name__)
 class ESIConfig:
     """ESI configuration for primary and secondary markets."""
 
-    _region_ids = {"primary_region_id": 10000003, "secondary_region_id": None}
-    _system_ids = {"primary_system_id": 30000240, "secondary_system_id": None}
-    _structure_ids = {"primary_structure_id": 1035466617946, "secondary_structure_id": None}
+    _region_ids = {"primary_region_id": 10000023, "secondary_region_id": None}
+    _system_ids = {"primary_system_id": 30002029, "secondary_system_id": None}
+    _structure_ids = {"primary_structure_id": 1046831245129, "secondary_structure_id": None}
     _valid_aliases = ["primary", "secondary"]
-    _shortcut_aliases = {"4h": "primary", "nakah": "secondary"}
-    _names = {"primary": "4-HWWF Keepstar", "secondary": "Nakah I - Moon 1 - Thukker Mix Factory"}
+    _shortcut_aliases = {"b9": "primary", "nakah": "secondary"}
+    _names = {"primary": "B-9C24 - Maginot Line", "secondary": "Nakah I - Moon 1 - Thukker Mix Factory"}
 
     def __init__(self, alias: str):
         alias = alias.lower()
