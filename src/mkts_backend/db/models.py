@@ -1,6 +1,7 @@
 from sqlalchemy import String, Integer, DateTime, Float, Boolean, event
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from mkts_backend.utils.utils import get_type_name
+from mkts_backend.config.config import DatabaseConfig
 
 class Base(DeclarativeBase):
     pass

@@ -27,8 +27,8 @@ db = DatabaseConfig("wcmkt")
 sde_db = DatabaseConfig("sde")
 
 
-def upsert_database(table: Base, df: pd.DataFrame) -> bool:
-    WIPE_REPLACE_TABLES = ["marketstats", "doctrines"]
+def upsert_database(table: Base, df: pd.DataFrame, remote: bool = False) -> bool:
+    WIPE_REPLACE_TABLES = ["marketstats", "doctrines", "marketorders", "market_history"]
     tabname = table.__tablename__
     is_wipe_replace = tabname in WIPE_REPLACE_TABLES
     logger.info(f"Processing table: {tabname}, wipe_replace: {is_wipe_replace}")
@@ -49,7 +49,7 @@ def upsert_database(table: Base, df: pd.DataFrame) -> bool:
     db = DatabaseConfig("wcmkt")
     logger.info(f"updating: {db}")
 
-    remote_engine = db.remote_engine
+    remote_engine = db.remote_engine if remote else db.engine
     session = Session(bind=remote_engine)
 
     t = table.__table__
@@ -272,7 +272,7 @@ def update_history(history_results: list[dict]):
     return True
 
 
-def update_market_orders(orders: list[dict]) -> bool:
+def update_market_orders(orders: list[dict], remote: bool = False) -> bool:
     orders_df = pd.DataFrame.from_records(orders)
     type_names = get_type_names_from_df(orders_df)
     orders_df = orders_df.merge(type_names, on="type_id", how="left")
@@ -287,7 +287,7 @@ def update_market_orders(orders: list[dict]) -> bool:
     orders_df = validate_columns(orders_df, valid_columns)
 
     logger.info(f"Orders fetched:{len(orders_df)} items")
-    status = upsert_database(MarketOrders, orders_df)
+    status = upsert_database(MarketOrders, orders_df, remote=remote)
     if status:
         logger.info(f"Orders updated:{get_table_length('marketorders')} items")
         return True

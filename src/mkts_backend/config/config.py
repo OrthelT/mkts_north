@@ -18,6 +18,7 @@ class DatabaseConfig:
         "wcnorth": "wcmktnorth.db",
         "sde": "sde_info.db",
         "fittings": "wcfitting.db",
+        "wcmkt": "wcmkt2.db",
     }
 
     _db_turso_urls = {
@@ -62,18 +63,18 @@ class DatabaseConfig:
             self._engine = create_engine(self.url)
         return self._engine
 
-    @property
-    def remote_engine(self):
-        if self._remote_engine is None:
-            turso_url = self._db_turso_urls[f"{self.alias}_turso"]
-            auth_token = self._db_turso_auth_tokens[f"{self.alias}_turso"]
-            self._remote_engine = create_engine(
-                f"sqlite+{turso_url}?secure=true",
-                connect_args={
-                    "auth_token": auth_token,
-                },
-            )
-        return self._remote_engine
+    # @property
+    # def remote_engine(self):
+    #     if self._remote_engine is None:
+    #         turso_url = self._db_turso_urls[f"{self.alias}_turso"]
+    #         auth_token = self._db_turso_auth_tokens[f"{self.alias}_turso"]
+    #         self._remote_engine = create_engine(
+    #             f"sqlite+{turso_url}?secure=true",
+    #             connect_args={
+    #                 "auth_token": auth_token,
+    #             },
+    #         )
+    #     return self._remote_engine
 
     @property
     def libsql_local_connect(self):
@@ -95,23 +96,25 @@ class DatabaseConfig:
         return self._sqlite_local_connect
 
     def sync(self):
+        logger.info(f"Syncing disabled for {self.alias}")
+        return True
         conn = self.libsql_sync_connect
         with conn:
             conn.sync()
         conn.close()
 
-    def validate_sync(self) -> bool:
-        with self.remote_engine.connect() as conn:
-            result = conn.execute(text("SELECT MAX(last_update) FROM marketstats")).fetchone()
-            remote_last_update = result[0]
-        with self.engine.connect() as conn:
-            result = conn.execute(text("SELECT MAX(last_update) FROM marketstats")).fetchone()
-            local_last_update = result[0]
-        logger.info(f"remote_last_update: {remote_last_update}")
-        logger.info(f"local_last_update: {local_last_update}")
-        validation_test = remote_last_update == local_last_update
-        logger.info(f"validation_test: {validation_test}")
-        return validation_test
+    # def validate_sync(self) -> bool:
+    #     with self.remote_engine.connect() as conn:
+    #         result = conn.execute(text("SELECT MAX(last_update) FROM marketstats")).fetchone()
+    #         remote_last_update = result[0]
+    #     with self.engine.connect() as conn:
+    #         result = conn.execute(text("SELECT MAX(last_update) FROM marketstats")).fetchone()
+    #         local_last_update = result[0]
+    #     logger.info(f"remote_last_update: {remote_last_update}")
+    #     logger.info(f"local_last_update: {local_last_update}")
+    #     validation_test = remote_last_update == local_last_update
+    #     logger.info(f"validation_test: {validation_test}")
+    #     return validation_test
 
     def get_table_list(self, local_only: bool = True) -> list[tuple]:
         if local_only:
