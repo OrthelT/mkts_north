@@ -1,7 +1,8 @@
 import sys
 import json
 import time
-
+import pandas as pd
+from mkts_backend.config.gsheets_config import GoogleSheetConfig
 from mkts_backend.config.logging_config import configure_logging
 from mkts_backend.db.db_queries import get_table_length
 from mkts_backend.db.db_handlers import (
@@ -162,26 +163,28 @@ def process_jita_history():
         logger.error("No Jita history data retrieved")
         return False
 
-def process_market_stats(sync: bool = True):
+def process_market_stats(remote: bool = False):
     logger.info("Calculating market stats")
     logger.info("syncing database")
     db = DatabaseConfig("wcmkt")
-    db.sync()
-    logger.info("database synced")
-    logger.info("validating database")
-    validation_test = db.validate_sync()
-    if validation_test:
-        logger.info("database validated")
-    else:
-        logger.error("database validation failed")
-        raise Exception("database validation failed in market stats")
+    if remote:
+        db.sync()
+        logger.info("database synced")
+        logger.info("validating database")
+        validation_test = db.validate_sync()
+        if validation_test:
+            logger.info("database validated")
+        else:
+            logger.error("database validation failed")
+            raise Exception("database validation failed in market stats")
 
     try:
         market_stats_df = calculate_market_stats()
-        if len(market_stats_df) > 0:
-            logger.info(f"Market stats calculated: {len(market_stats_df)} items")
+        status = process_gsheets(market_stats_df, sheet_name='market_data')
+        if status:
+            logger.info("Market data updated in Google Sheets")
         else:
-            logger.error("Failed to calculate market stats")
+            logger.error("Failed to update Google Sheets")
             return False
     except Exception as e:
         logger.error(f"Failed to calculate market stats: {e}")
@@ -212,14 +215,18 @@ def process_market_stats(sync: bool = True):
         logger.error(f"Failed to update market stats: {e}")
         return False
 
-def process_doctrine_stats(sync: bool = True):
+def process_doctrine_stats(remote: bool = False):
     logger.info("Calculating doctrines stats")
     logger.info("syncing database")
     db = DatabaseConfig("wcmkt")
-    db.sync()
+    if remote:
+        db.sync()
     logger.info("database synced")
     logger.info("validating database")
-    validation_test = db.validate_sync()
+    if remote:
+        validation_test = db.validate_sync()
+    else:
+        validation_test = True
     if validation_test:
         logger.info("database validated")
     else:
@@ -229,6 +236,8 @@ def process_doctrine_stats(sync: bool = True):
     doctrine_stats_df = calculate_doctrine_stats()
     doctrine_stats_df = convert_datetime_columns(doctrine_stats_df, ["timestamp"])
     status = upsert_database(Doctrines, doctrine_stats_df)
+
+
     if status:
         log_update("doctrines",remote=True)
         logger.info(f"Doctrines updated:{get_table_length('doctrines')} items")
@@ -237,7 +246,19 @@ def process_doctrine_stats(sync: bool = True):
         logger.error("Failed to update doctrines")
         return False
 
-def main(history: bool = False, sync: bool = True):
+
+def process_gsheets(data: pd.DataFrame, sheet_name: str = 'market_data'):
+    logger.info("Updating Google Sheets")
+    gs_config = GoogleSheetConfig()
+    status = gs_config.update_sheet(data, sheet_name=sheet_name)
+    if status:
+        logger.info("Google Sheets updated")
+    else:
+        logger.error("Failed to update Google Sheets")
+        return False
+    return True
+
+def main(history: bool = False, remote: bool = False):
     """Main function to process market orders, history, market stats, and doctrines"""
     # Accept flags when invoked via console_script entrypoint
     if "--check_tables" in sys.argv:
@@ -294,37 +315,35 @@ def main(history: bool = False, sync: bool = True):
 
     if "--history" in sys.argv or "--include-history" in sys.argv:
         history = True
-    # start_time = time.perf_counter()
-    # logger.info(f"sys.argv: {sys.argv}")
-    # logger.info(f"history: {history}")
-    # logger.info("=" * 80)
-    # # init_databases()
-    # logger.info("Databases initialized")
+    start_time = time.perf_counter()
+    logger.info(f"sys.argv: {sys.argv}")
+    logger.info(f"history: {history}")
+    logger.info("=" * 80)
+    init_databases()
+    logger.info("Databases initialized")
 
     esi = ESIConfig("primary")
     db = DatabaseConfig("wcmkt")
     logger.info(f"Database: {db.alias}")
-    if sync:    
+    if remote:    
         validation_test = db.validate_sync()
     else:
         validation_test = True
 
     if not validation_test:
         logger.warning("wcmkt database is not up to date. Updating...")
-        if sync:
+        if remote:
             db.sync()
-        logger.info("database synced")
-        validation_test = db.validate_sync()
-        if validation_test:
-            logger.info("database validated")
+            logger.info("database synced")
         else:
-            logger.error("database validation failed")
-            raise Exception("database validation failed in main")
+            logger.info("database not synced")
+        
+
 
     print("=" * 80)
     print("Fetching market orders")
     print("=" * 80)
-    status = process_market_orders(esi, order_type="all", test_mode=False, sync=sync)
+    status = process_market_orders(esi, order_type="all", test_mode=False, remote=False)
     if status:
         logger.info("Market orders updated")
     else:
@@ -338,7 +357,7 @@ def main(history: bool = False, sync: bool = True):
         logger.info(f"Watchlist found: {len(watchlist)} items")
     else:
         logger.error("No watchlist found. Unable to proceed further.")
-        exit()
+  
 
     if history:
         logger.info("Processing history ")
@@ -373,77 +392,76 @@ def main(history: bool = False, sync: bool = True):
         logger.error("Failed to update doctrines")
         exit()
 
+    
     logger.info("=" * 80)
     logger.info(f"Market job complete in {time.perf_counter()-start_time:.1f}s")
     logger.info("=" * 80)
 
 
 if __name__ == "__main__":
-    # logger.info("=" * 80)
-    # logger.info("Starting mkts-backend")
-    # logger.info("=" * 80 + "\n")
-    # include_history = False
+    logger.info("=" * 80)
+    logger.info("Starting mkts-backend")
+    logger.info("=" * 80 + "\n")
+    include_history = False
 
-    # if len(sys.argv) > 1:
-    #     if "--history" in sys.argv:
-    #         include_history = True
-    #     elif "--check_tables" in sys.argv:
-    #         check_tables()
-    #         exit()
-    #     elif "parse-items" in sys.argv:
-    #         # Handle parse-items command in __main__ section
-    #         input_file = None
-    #         output_file = None
+    if len(sys.argv) > 1:
+        if "--history" in sys.argv:
+            include_history = True
+        elif "--check_tables" in sys.argv:
+            check_tables()
+            exit()
+        elif "parse-items" in sys.argv:
+            # Handle parse-items command in __main__ section
+            input_file = None
+            output_file = None
 
-    #         for arg in sys.argv:
-    #             if arg.startswith("--input="):
-    #                 input_file = arg.split("=", 1)[1]
-    #             elif arg.startswith("--output="):
-    #                 output_file = arg.split("=", 1)[1]
+            for arg in sys.argv:
+                if arg.startswith("--input="):
+                    input_file = arg.split("=", 1)[1]
+                elif arg.startswith("--output="):
+                    output_file = arg.split("=", 1)[1]
 
-    #         if not input_file or not output_file:
-    #             print("Error: Both --input and --output parameters are required for parse-items command")
-    #             print("Usage: mkts-backend parse-items --input=structure_data.txt --output=market_prices.csv")
-    #             exit()
+            if not input_file or not output_file:
+                print("Error: Both --input and --output parameters are required for parse-items command")
+                print("Usage: mkts-backend parse-items --input=structure_data.txt --output=market_prices.csv")
+                exit()
 
-    #         success = parse_items(input_file, output_file)
-    #         if success:
-    #             print("Parse items command completed successfully")
-    #         else:
-    #             print("Parse items command failed")
-    #         exit()
-    #     elif "add_watchlist" in sys.argv:
-    #         # Handle add_watchlist command in __main__ section too
-    #         type_ids_str = None
-    #         for i, arg in enumerate(sys.argv):
-    #             if arg.startswith("--type_id="):
-    #                 type_ids_str = arg.split("=", 1)[1]
-    #                 break
+            success = parse_items(input_file, output_file)
+            if success:
+                print("Parse items command completed successfully")
+            else:
+                print("Parse items command failed")
+            exit()
+        elif "add_watchlist" in sys.argv:
+            # Handle add_watchlist command in __main__ section too
+            type_ids_str = None
+            for i, arg in enumerate(sys.argv):
+                if arg.startswith("--type_id="):
+                    type_ids_str = arg.split("=", 1)[1]
+                    break
 
-    #         if not type_ids_str:
-    #             print("Error: --type_id parameter is required for add_watchlist command")
-    #             print("Usage: mkts-backend add_watchlist --type_id=12345,67890,11111")
-    #             print("       mkts-backend add_watchlist --type_id=12345,67890,11111 --local")
-    #             exit()
+            if not type_ids_str:
+                print("Error: --type_id parameter is required for add_watchlist command")
+                print("Usage: mkts-backend add_watchlist --type_id=12345,67890,11111")
+                print("       mkts-backend add_watchlist --type_id=12345,67890,11111 --local")
+                exit()
 
-    #         # Default to remote database, use --local flag for local database
-    #         remote = "--local" not in sys.argv
-    #         success = process_add_watchlist(type_ids_str, remote=remote)
-    #         if success:
-    #             print("Add watchlist command completed successfully")
-    #         else:
-    #             print("Add watchlist command failed")
-    #         exit()
-    #     elif "--help" in sys.argv:
-    #         display_cli_help()
-    #         exit()
+            # Default to remote database, use --local flag for local database
+            remote = "--local" not in sys.argv
+            success = process_add_watchlist(type_ids_str, remote=False)
+            if success:
+                print("Add watchlist command completed successfully")
+            else:
+                print("Add watchlist command failed")
+            exit()
+        elif "--help" in sys.argv:
+            display_cli_help()
+            exit()
 
-    #     else:
-    #         display_cli_help()
-    #         exit()
+        else:
+            display_cli_help()
+            exit()
 
-    # t0 = time.perf_counter()
-    # main(history=include_history)
-    # logger.info(f"Main function completed in {time.perf_counter()-t0:.1f}s")
-
-    process_market_orders(ESIConfig("primary"), order_type="sell", test_mode=False, remote=False)
+    t0 = time.perf_counter()
+    main(history=include_history)
+    logger.info(f"Main function completed in {time.perf_counter()-t0:.1f}s")

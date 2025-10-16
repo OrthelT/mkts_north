@@ -15,8 +15,8 @@ This module configures the Google Sheets API and updates a spreadsheet with mark
 
 
 class GoogleSheetConfig:
-    _google_private_key_file = "wcupdates-6909ae0dfa86.json"
-    _google_sheet_url = "https://docs.google.com/spreadsheets/d/1RmNJB9Yz4lG6kKKitGQ0zDuPbOiSe0ywn4SbSKabdwc/edit?gid=0#gid=0"
+    _google_private_key_file = "wcupdates-1eec6cbb5e0c.json"
+    _google_sheet_url = "https://docs.google.com/spreadsheets/d/1I5XwtI9dfAVE4E73v3Lwr8z3od-ibr3h_evBeaAuhaw/edit?gid=800271361#gid=800271361"
     _default_sheet_name = "market_data"
     _default_clear_range = "A2:Z10000"
     _default_worksheet_rows = 1000
@@ -124,6 +124,12 @@ class GoogleSheetConfig:
             data = data.infer_objects()
             data = data.fillna(0)
             data = data.reset_index(drop=True)
+
+            # Convert datetime/timestamp columns to strings for JSON serialization
+            for col in data.columns:
+                if pd.api.types.is_datetime64_any_dtype(data[col]):
+                    data[col] = data[col].astype(str)
+
             logger.info(f"Data shape: {data.shape}")
             logger.info(f"Data columns: {list(data.columns)}")
 
@@ -172,3 +178,5 @@ class GoogleSheetConfig:
             logger.error(f"Failed to update sheet with system orders: {e}")
             return False
 
+if __name__ == "__main__":
+    pass

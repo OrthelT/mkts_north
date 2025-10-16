@@ -252,9 +252,18 @@ def calculate_doctrine_stats() -> pd.DataFrame:
     doctrine_stats["timestamp"] = doctrine_stats["type_id"].map(
         market_stats.set_index("type_id")["last_update"]
     )
-    doctrine_stats["fits_on_mkt"] = round(
-        doctrine_stats["total_stock"] / doctrine_stats["fit_qty"], 1
-    )
+
+    # Ensure numeric types and fill NaN values before calculation
+    doctrine_stats["total_stock"] = pd.to_numeric(doctrine_stats["total_stock"], errors='coerce').fillna(0)
+    doctrine_stats["fit_qty"] = pd.to_numeric(doctrine_stats["fit_qty"], errors='coerce').fillna(1)
+    doctrine_stats["hulls"] = pd.to_numeric(doctrine_stats["hulls"], errors='coerce').fillna(0)
+    doctrine_stats["price"] = pd.to_numeric(doctrine_stats["price"], errors='coerce').fillna(0)
+    doctrine_stats["avg_vol"] = pd.to_numeric(doctrine_stats["avg_vol"], errors='coerce').fillna(0)
+    doctrine_stats["days"] = pd.to_numeric(doctrine_stats["days"], errors='coerce').fillna(0)
+
+    # Now calculate fits_on_mkt with safe division
+    doctrine_stats["fits_on_mkt"] = (doctrine_stats["total_stock"] / doctrine_stats["fit_qty"]).round(1)
+
     doctrine_stats = doctrine_stats.infer_objects()
     doctrine_stats = doctrine_stats.fillna(0)
 
