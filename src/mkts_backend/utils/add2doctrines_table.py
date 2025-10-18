@@ -1,14 +1,24 @@
+import sys
+import os
+import pathlib
+import json
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from mkts_backend.config.config import DatabaseConfig
-from sqlalchemy import text, select, delete, func
+from sqlalchemy import engine, text, select, delete, func
 from sqlalchemy.orm import Session
-from mkts_backend.db.models import Doctrines
+from mkts_backend.db.models import DoctrineMap, Doctrines
 from mkts_backend.config.logging_config import configure_logging
 import pandas as pd
+
+from mkts_backend.utils.utils import fittings_db
 logger = configure_logging(__name__)
 
 mkt_db = DatabaseConfig("wcmkt")
 fits_db = DatabaseConfig("fittings")
 sde_db = DatabaseConfig("sde")
+
+root_path = pathlib.Path(__file__).parent.parent.parent.parent.parent
 
 
 def get_fit_items(fit_id: int, ship_id: int, ship_name: str)->list[Doctrines]:
@@ -157,5 +167,8 @@ def count_doctrines_table(fit_id: int, remote: bool = False):
     engine.dispose()
     print(f"Item from doctrines table: {count}")
     return count
+
+
+
 if __name__ == "__main__":
     pass

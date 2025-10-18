@@ -156,27 +156,27 @@ class Watchlist(Base):
         )
 
 
-class NakahWatchlist(Base):
-    __tablename__ = "nakah_watchlist"
-    type_id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    group_id: Mapped[int] = mapped_column(Integer)
-    type_name: Mapped[str] = mapped_column(String)
-    group_name: Mapped[str] = mapped_column(String)
-    category_id: Mapped[int] = mapped_column(Integer)
-    category_name: Mapped[str] = mapped_column(String)
+# class NakahWatchlist(Base):
+#     __tablename__ = "nakah_watchlist"
+#     type_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+#     group_id: Mapped[int] = mapped_column(Integer)
+#     type_name: Mapped[str] = mapped_column(String)
+#     group_name: Mapped[str] = mapped_column(String)
+#     category_id: Mapped[int] = mapped_column(Integer)
+#     category_name: Mapped[str] = mapped_column(String)
 
-    def __repr__(self) -> str:
-        return (
-            f"watchlist(type_id={self.type_id!r}, group_id={self.group_id!r}, type_name={self.type_name!r}, "
-            f"group_name={self.group_name!r}, category_id={self.category_id!r}, category_name={self.category_name!r})"
-        )
+#     def __repr__(self) -> str:
+#         return (
+#             f"watchlist(type_id={self.type_id!r}, group_id={self.group_id!r}, type_name={self.type_name!r}, "
+#             f"group_name={self.group_name!r}, category_id={self.category_id!r}, category_name={self.category_name!r})"
+#         )
 
 
-class DoctrineInfo(Base):
-    __tablename__ = "doctrine_info"
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    doctrine_id: Mapped[int] = mapped_column(Integer)
-    doctrine_name: Mapped[str] = mapped_column(String)
+# class DoctrineInfo(Base):
+#     __tablename__ = "doctrine_info"
+#     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+#     doctrine_id: Mapped[int] = mapped_column(Integer)
+#     doctrine_name: Mapped[str] = mapped_column(String)
 
 
 class DoctrineFit(Base):

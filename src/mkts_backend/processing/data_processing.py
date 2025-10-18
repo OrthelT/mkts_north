@@ -265,6 +265,11 @@ def calculate_doctrine_stats() -> pd.DataFrame:
     doctrine_stats["fits_on_mkt"] = (doctrine_stats["total_stock"] / doctrine_stats["fit_qty"]).round(1)
 
     doctrine_stats = doctrine_stats.infer_objects()
+    
+    # Fill timestamp NaNs with current UTC time before filling other columns with 0
+    current_time = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+    doctrine_stats["timestamp"] = doctrine_stats["timestamp"].fillna(current_time)
+    
     doctrine_stats = doctrine_stats.fillna(0)
 
     doctrine_stats["fits_on_mkt"] = doctrine_stats["fits_on_mkt"].astype(int)

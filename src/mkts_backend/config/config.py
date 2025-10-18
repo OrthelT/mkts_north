@@ -12,7 +12,7 @@ load_dotenv()
 logger = configure_logging(__name__)
 
 class DatabaseConfig:
-    wcdbmap = "wcnorth" #select wcmkt2 (production) or wcmkt3 (development)
+    wcdbmap = "wcnorth" #select wcmkt2 (production), wcnorth (war staging), wcmkt3 (development)
 
     _db_paths = {
         "wcnorth": "wcmktnorth.db",
@@ -25,12 +25,14 @@ class DatabaseConfig:
         "wcnorth_turso": os.getenv("wcmktnorth_url"),
         "sde_turso": os.getenv("TURSO_SDE_URL"),
         "fittings_turso": os.getenv("TURSO_FITTING_URL"),
+        "wcmkt_turso": os.getenv("wcmkt2_url"),
     }
 
     _db_turso_auth_tokens = {
         "wcnorth_turso": os.getenv("wcmktnorth_token"),
         "sde_turso": os.getenv("TURSO_SDE_TOKEN"),
         "fittings_turso": os.getenv("TURSO_FITTING_TOKEN"),
+        "wcmkt_turso": os.getenv("wcmkt2_token"),
     }
 
     def __init__(self, alias: str, dialect: str = "sqlite+libsql"):
@@ -96,8 +98,6 @@ class DatabaseConfig:
         return self._sqlite_local_connect
 
     def sync(self):
-        logger.info(f"Syncing disabled for {self.alias}")
-        return True
         conn = self.libsql_sync_connect
         with conn:
             conn.sync()
