@@ -1,14 +1,16 @@
 import datetime
 from dataclasses import dataclass, field
+from numpy.ma import count
 import pandas as pd
 from sqlalchemy import text, select
 from sqlalchemy.orm import Session
 from mkts_backend.db.models import Doctrines, LeadShips, DoctrineFit, Base
-from mkts_backend.db.db_queries import get_watchlist_ids, get_fit_ids, get_fit_items, get_type_name
+from mkts_backend.db.db_queries import get_watchlist_ids, get_fit_ids, get_fit_items
 from mkts_backend.utils.get_type_info import TypeInfo
 from mkts_backend.config.config import DatabaseConfig
 from mkts_backend.config.logging_config import configure_logging
-
+from mkts_backend.db.sde_models import SdeInfo
+from mkts_backend.utils.add2doctrines_table import add_fit_to_doctrines_table
 
 doctrines_fields = ['id', 'fit_id', 'ship_id', 'ship_name', 'hulls', 'type_id', 'type_name', 'fit_qty', 'fits_on_mkt', 'total_stock', 'price', 'avg_vol', 'days', 'group_id', 'group_name', 'category_id', 'category_name', 'timestamp']
 logger = configure_logging(__name__)
@@ -44,6 +46,33 @@ class DoctrineFit:
     def __post_init__(self):
         self.timestamp = datetime.datetime.strftime(datetime.datetime.now(datetime.timezone.utc), '%Y-%m-%d %H:%M:%S')
 
+@dataclass
+class Doctrine:
+    doctrine_id: int
+    remote: bool = False
+    def __post_init__(self):
+        self.fits = get_fit_ids(self.doctrine_id)
+    
+    @property
+    def all_item_ids(self)->list[int]:
+        all_ids = []
+        fits_dict = get_fit_dicts(self.doctrine_id, remote=self.remote)
+        for fit_id, items in fits_dict.items():
+            for item in items:
+                all_ids.append(item["type_id"])
+        return(list(set(all_ids)))
+
+    def get_all_fit_ids(self)->list[int]:
+        fits_dict = get_fit_dicts(self.doctrine_id, remote=self.remote)
+        return(fits_dict.keys())
+
+    def get_all_ships(self)->list[int]:
+        all_ships = []
+        for fit_id in self.get_all_fit_ids():
+            ship_id = get_ship_for_fit(fit_id=fit_id, remote=self.remote)
+            all_ships.append(ship_id)
+        return(list(set(all_ships)))
+
 def add_ship_target():
     db = DatabaseConfig("wcmkt")
     stmt = text("""INSERT INTO ship_targets ('fit_id', 'fit_name', 'ship_id', 'ship_name', 'ship_target', 'created_at')
@@ -56,15 +85,15 @@ def add_ship_target():
     conn.close()
     engine.dispose()
 
-def add_doctrine_map_from_fittings_doctrine_fittings(doctrine_id: int):
+def add_doctrine_map_from_fittings_doctrine_fittings(doctrine_id: int, remote: bool = False):
     db = DatabaseConfig("fittings")
-    engine = db.remote_engine
+    engine = db.engine
     with engine.connect() as conn:
         stmt = text("SELECT * FROM fittings_doctrine_fittings WHERE doctrine_id = :doctrine_id")
         df = pd.read_sql_query(stmt, conn, params={"doctrine_id": doctrine_id})
     conn.close()
     doctrine_map_db = DatabaseConfig("wcmkt")
-    engine = doctrine_map_db.remote_engine
+    engine = doctrine_map_db.remote_engine if remote else doctrine_map_db.engine
     with engine.connect() as conn:
         for index, row in df.iterrows():
             stmt = text("INSERT INTO doctrine_map ('doctrine_id', 'fitting_id') VALUES (:doctrine_id, :fitting_id)")
@@ -74,6 +103,18 @@ def add_doctrine_map_from_fittings_doctrine_fittings(doctrine_id: int):
         print("Doctrine map added")
     conn.close()
     engine.dispose()
+
+def get_ship_for_fit(fit_id: int, remote: bool = False)->int:
+    db = DatabaseConfig("fittings")
+    engine = db.engine
+    with engine.connect() as conn:
+        stmt = text("SELECT * FROM fittings_fitting WHERE id = :fit_id")
+        result = conn.execute(stmt, {"fit_id": fit_id})
+        ship_id = result.fetchone()[4]
+
+    conn.close()
+    engine.dispose()
+    return ship_id
 
 def add_hurricane_fleet_issue_to_doctrines():
 
@@ -162,7 +203,6 @@ def add_fit_to_doctrines_table(DoctrineFit: DoctrineFit):
     conn.close()
     engine.dispose()
 
-
 def add_lead_ship():
     hfi = LeadShips(doctrine_name=doctrine_name, doctrine_id=84, lead_ship=ship_id, fit_id=doctrine_fit_id)
     db = DatabaseConfig("wcmkt")
@@ -197,10 +237,11 @@ def process_hfi_fit_items(type_ids: list[int]) -> list[DoctrineFit]:
         items.append(item)
     return items
 
-def get_fit_item_ids(doctrine_id: int) -> dict[int, list[int]]:
+def get_fit_dicts(doctrine_id: int, remote: bool = False) -> dict[int, dict[int, int]]:
     fit_items = {}
+    fits = {}
     db = DatabaseConfig("fittings")
-    engine = db.remote_engine
+    engine = db.remote_engine if remote else db.engine
     with engine.connect() as conn:
         stmt = text("SELECT * FROM fittings_doctrine_fittings WHERE doctrine_id = :doctrine_id")
         result = conn.execute(stmt, {"doctrine_id": doctrine_id})
@@ -212,29 +253,56 @@ def get_fit_item_ids(doctrine_id: int) -> dict[int, list[int]]:
             fit_items[fit_id] = type_ids
     conn.close()
     engine.dispose()
-    return fit_items
+    for k, v in fit_items.items():
+        items = []
+        unique_ids = set(v)
+        for id in unique_ids:
+            count = v.count(id)
+            items.append({"type_id": id, "count": count})
+        fits[k] = items
+    return fits
 
-def add_doctrine_type_info_to_watchlist(doctrine_id: int):
-    watchlist_ids = get_watchlist_ids()
+def add_doctrine_type_info_to_watchlist(doctrine_id: int, remote: False):
+    watchlist_ids = get_watchlist_ids(remote=remote)
     fit_ids = get_fit_ids(doctrine_id)
+    doctrine = Doctrine(doctrine_id=doctrine_id, remote=remote)
 
     missing_fit_items = []
+    unique_items = []
 
     for fit_id in fit_ids:
         fit_items = get_fit_items(fit_id)
         for item in fit_items:
             if item not in watchlist_ids:
                 missing_fit_items.append(item)
-
+    ship_ids = doctrine.get_all_ships()
+    for ship_id in ship_ids:
+        if ship_id not in watchlist_ids:
+            missing_fit_items.append(ship_id)
+    missing_fit_items = set(missing_fit_items)
     missing_type_info = []
     logger.info(f"Adding {len(missing_fit_items)} missing items to watchlist")
     print(f"Adding {len(missing_fit_items)} missing items to watchlist")
+
+    db = DatabaseConfig("wcmkt")
+    logger.info(f"Adding {len(missing_fit_items)} missing items to watchlist to {db.alias, db.path} remote {remote} database")
+
+    print("="*30)
+    print("Missing items")
+    print("="*30)
+
+    for item in missing_fit_items:
+        item_name = get_type_name(type_id=item)
+        print(item_name, " ", item)
+    
+
     continue_adding = input("Continue adding? (y/n)")
     if continue_adding == "n":
         return
     else:
         logger.info(f"Continuing to add {len(missing_fit_items)} missing items to watchlist")
         print(f"Continuing to add {len(missing_fit_items)} missing items to watchlist")
+    
 
     for item in missing_fit_items:
         stmt4 = text("SELECT * FROM inv_info WHERE typeID = :item")
@@ -249,7 +317,8 @@ def add_doctrine_type_info_to_watchlist(doctrine_id: int):
     for type_info in missing_type_info:
         stmt5 = text("INSERT INTO watchlist (type_id, type_name, group_name, category_name, category_id, group_id) VALUES (:type_id, :type_name, :group_name, :category_name, :category_id, :group_id)")
         db = DatabaseConfig("wcmkt")
-        engine = db.engine
+        engine = db.remote_engine if remote else db.engine
+    
         with engine.connect() as conn:
             conn.execute(stmt5, {"type_id": type_info.type_id, "type_name": type_info.type_name, "group_name": type_info.group_name, "category_name": type_info.category_name, "category_id": type_info.category_id, "group_id": type_info.group_id})
             conn.commit()
@@ -377,18 +446,4 @@ def replace_doctrines_table(df: pd.DataFrame, remote: bool = False):
     check_doctrines_table(remote=True)
 
 if __name__ == "__main__":
-    db = DatabaseConfig('wcmkt3')
-    engine = db.remote_engine
-    session = Session(bind=engine)
-    rows = []
-    with session.begin():
-        stmt = select(Doctrines).where(Doctrines.fit_id == 494)
-        result = session.scalars(stmt)
-        for row in result:
-            rowdict = row.__dict__
-            rowdict.pop('_sa_instance_state')
-            rows.append(rowdict)
-    df = pd.DataFrame(rows)
-    print(df)
-    session.close()
-    engine.dispose()
+    pass

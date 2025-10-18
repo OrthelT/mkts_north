@@ -63,10 +63,10 @@ def get_remote_status():
     return status_dict
 
 
-def get_watchlist_ids():
+def get_watchlist_ids(remote: bool = False):
     stmt = text("SELECT DISTINCT type_id FROM watchlist")
     db = DatabaseConfig("wcmkt")
-    engine = db.engine
+    engine = db.remote_engine if remote else db.engine
     with engine.connect() as conn:
         result = conn.execute(stmt)
         watchlist_ids = [row[0] for row in result]
@@ -165,4 +165,7 @@ def get_region_history() -> pd.DataFrame:
 
 
 if __name__ == "__main__":
-    pass
+    from mkts_backend.utils.utils import get_type_name
+    df = get_market_stats(type_id=42244)
+    print(df)
+    print(get_type_name(type_id=42244))

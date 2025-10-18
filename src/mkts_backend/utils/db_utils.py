@@ -6,8 +6,8 @@ from mkts_backend.config.logging_config import configure_logging
 from mkts_backend.db.models import Watchlist, UpdateLog
 from datetime import datetime, timezone, timedelta
 from sqlalchemy.orm import Session
-
-from mkts_backend.utils.utils import update_watchlist_data
+from mkts_backend.db.db_handlers import upsert_database
+from mkts_backend.db.db_queries import get_watchlist_ids
 
 logger = configure_logging(__name__)
 
@@ -33,7 +33,7 @@ def add_missing_items_to_watchlist(missing_items: list[int], remote: bool = Fals
 
     # Get type information from SDE database
     df = get_type_info(missing_items, remote=remote)
-
+    logger.info(f"Type information: {df}")
     if df.empty:
         logger.error("No type information found for provided type IDs")
         return "No type information found for provided type IDs"
@@ -44,8 +44,9 @@ def add_missing_items_to_watchlist(missing_items: list[int], remote: bool = Fals
     watchlist = db.get_watchlist()
 
     # Filter out items that already exist in watchlist
-    existing_type_ids = set(watchlist['type_id'].tolist()) if not watchlist.empty else set()
+    existing_type_ids = set(watchlist['type_id'].tolist())
     new_items = df[~df['type_id'].isin(existing_type_ids)]
+    logger.info(f"New items: {new_items}")
 
     if new_items.empty:
         logger.info("All provided items already exist in watchlist")
@@ -62,9 +63,6 @@ def add_missing_items_to_watchlist(missing_items: list[int], remote: bool = Fals
 
     # Insert new items into database using proper upsert to avoid duplicates
     try:
-        from mkts_backend.db.db_handlers import upsert_database
-        from mkts_backend.db.models import Watchlist
-
         # Use the existing upsert_database function to handle conflicts properly
         success = upsert_database(Watchlist, new_items)
 

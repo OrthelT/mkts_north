@@ -330,3 +330,4 @@ def process_region_history(watchlist: pd.DataFrame):
 
 if __name__ == "__main__":
     pass
+    

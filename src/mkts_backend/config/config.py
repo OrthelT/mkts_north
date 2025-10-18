@@ -12,7 +12,7 @@ load_dotenv()
 logger = configure_logging(__name__)
 
 class DatabaseConfig:
-    # wcdbmap = "wcnorth" #select wcmkt2 (production), wcnorth (war staging), wcmkt3 (development)
+    wcdbmap = "wcmkt" #select wcmkt2 (production), wcnorth (war staging), wcmkt3 (development)
 
     _db_paths = {
         "wcnorth": "wcmktnorth.db",
@@ -36,17 +36,17 @@ class DatabaseConfig:
     }
 
     def __init__(self, alias: str, dialect: str = "sqlite+libsql"):
-        # if alias == "wcmkt":
-        #     alias = self.wcdbmap
-        # elif alias == "wcmkt3" or alias == "wcmkt2":
-        #     logger.warning(
-        #         f"Database alias '{alias}' is deprecated. Configure wcdbmap in config.py to select wcmkt2 or wcmkt3 instead."
-        #     )
+        if alias == "wcmkt":
+            alias = self.wcdbmap
+        elif alias == "wcmkt3" or alias == "wcmkt2":
+            logger.warning(
+                f"Database alias '{alias}' is deprecated. Configure wcdbmap in config.py to select wcmkt2 or wcmkt3 instead."
+            )
 
-        # if alias not in self._db_paths:
-        #     raise ValueError(
-        #         f"Unknown database alias '{alias}'. Available: {list(self._db_paths.keys())}"
-        #     )
+        if alias not in self._db_paths:
+            raise ValueError(
+                f"Unknown database alias '{alias}'. Available: {list(self._db_paths.keys())}"
+            )
 
         self.alias = alias
         self.path = self._db_paths[alias]
