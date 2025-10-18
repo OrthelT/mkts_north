@@ -126,7 +126,7 @@ def process_history():
     if data:
         with open("data/market_history_new.json", "w") as f:
             json.dump(data, f)
-        status = update_history(data)
+        status = update_history(data, remote=True)
         if status:
             log_update("market_history",remote=True)
             logger.info(f"History updated:{get_table_length('market_history')} items")
@@ -139,19 +139,10 @@ def process_jita_history():
     """Process Jita (The Forge) history data"""
     logger.info("Processing Jita history from The Forge region")
 
-    # Ensure jita_history table exists
-    try:
-        db = DatabaseConfig("wcmkt")
-        Base.metadata.create_all(db.remote_engine)
-        logger.info("Ensured jita_history table exists")
-    except Exception as e:
-        logger.error(f"Failed to create jita_history table: {e}")
-        return False
-
     jita_records = run_async_jita_history()
     if jita_records:
         logger.info(f"Retrieved {len(jita_records)} Jita history records")
-        status = update_jita_history(jita_records)
+        status = update_jita_history(jita_records, remote=True)
         if status:
             log_update("jita_history", remote=True)
             logger.info(f"Jita history updated: {len(jita_records)} records")
@@ -235,6 +226,14 @@ def process_doctrine_stats(remote: bool = False):
 
     doctrine_stats_df = calculate_doctrine_stats()
     doctrine_stats_df = convert_datetime_columns(doctrine_stats_df, ["timestamp"])
+
+    # Update Google Sheets with doctrine data
+    gsheets_status = process_gsheets(doctrine_stats_df, sheet_name='doctrine_market')
+    if gsheets_status:
+        logger.info("Doctrine data updated in Google Sheets")
+    else:
+        logger.error("Failed to update doctrine data in Google Sheets")
+
     status = upsert_database(Doctrines, doctrine_stats_df)
 
 

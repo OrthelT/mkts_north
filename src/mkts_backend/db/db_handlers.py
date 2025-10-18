@@ -192,7 +192,7 @@ def upsert_database(table: Base, df: pd.DataFrame, remote: bool = False) -> bool
         remote_engine.dispose()
     return True
 
-def update_history(history_results: list[dict]):
+def update_history(history_results: list[dict], remote: bool = False):
     valid_history_columns = MarketHistory.__table__.columns.keys()
 
     flattened_history = []
@@ -256,16 +256,36 @@ def update_history(history_results: list[dict]):
     history_df.infer_objects()
     history_df.fillna(0)
 
+    # Ensure table exists in the target database
+    db = DatabaseConfig("wcmkt")
+    target_engine = db.remote_engine if remote else db.engine
     try:
-        upsert_database(MarketHistory, history_df)
+        Base.metadata.create_all(target_engine, tables=[MarketHistory.__table__])
+        logger.info(f"Ensured market_history table exists in {'remote' if remote else 'local'} database")
+    except Exception as e:
+        logger.error(f"Failed to ensure market_history table exists: {e}")
+        return False
+
+    try:
+        upsert_database(MarketHistory, history_df, remote=remote)
     except Exception as e:
         logger.error(f"history data update failed: {e}")
         return False
 
-    status = get_remote_status()['market_history']
+    # Check the specific table we just updated
+    try:
+        from sqlalchemy import text
+        with target_engine.connect() as conn:
+            result = conn.execute(text("SELECT COUNT(*) FROM market_history")).fetchone()
+            status = result[0]
+        conn.close()
+    except Exception as e:
+        logger.error(f"Failed to verify market_history table: {e}")
+        return False
+
     if status > 0:
-        logger.info(f"History updated:{get_table_length('market_history')} items")
-        print(f"History updated:{get_table_length('market_history')} items")
+        logger.info(f"History updated: {status} items in {'remote' if remote else 'local'} database")
+        print(f"History updated: {status} items")
     else:
         logger.error("Failed to update market history")
         return False
@@ -330,7 +350,7 @@ def update_region_orders(region_id: int, order_type: str = 'sell') -> pd.DataFra
 
     return pd.DataFrame(orders)
 
-def update_jita_history(jita_records: list[JitaHistory]) -> bool:
+def update_jita_history(jita_records: list[JitaHistory], remote: bool = False) -> bool:
     """Update JitaHistory table with Jita history data"""
     if not jita_records:
         logger.error("No Jita history data to process")
@@ -356,8 +376,18 @@ def update_jita_history(jita_records: list[JitaHistory]) -> bool:
     valid_columns = JitaHistory.__table__.columns.keys()
     jita_df = validate_columns(jita_df, valid_columns)
 
+    # Ensure table exists in the target database
+    db = DatabaseConfig("wcmkt")
+    target_engine = db.remote_engine if remote else db.engine
     try:
-        upsert_database(JitaHistory, jita_df)
+        Base.metadata.create_all(target_engine, tables=[JitaHistory.__table__])
+        logger.info(f"Ensured jita_history table exists in {'remote' if remote else 'local'} database")
+    except Exception as e:
+        logger.error(f"Failed to ensure jita_history table exists: {e}")
+        return False
+
+    try:
+        upsert_database(JitaHistory, jita_df, remote=remote)
         logger.info(f"Jita history updated: {len(jita_records)} records")
         return True
     except Exception as e:

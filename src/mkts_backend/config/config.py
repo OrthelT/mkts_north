@@ -12,7 +12,7 @@ load_dotenv()
 logger = configure_logging(__name__)
 
 class DatabaseConfig:
-    wcdbmap = "wcnorth" #select wcmkt2 (production), wcnorth (war staging), wcmkt3 (development)
+    # wcdbmap = "wcnorth" #select wcmkt2 (production), wcnorth (war staging), wcmkt3 (development)
 
     _db_paths = {
         "wcnorth": "wcmktnorth.db",
@@ -36,17 +36,17 @@ class DatabaseConfig:
     }
 
     def __init__(self, alias: str, dialect: str = "sqlite+libsql"):
-        if alias == "wcmkt":
-            alias = self.wcdbmap
-        elif alias == "wcmkt3" or alias == "wcmkt2":
-            logger.warning(
-                f"Database alias '{alias}' is deprecated. Configure wcdbmap in config.py to select wcmkt2 or wcmkt3 instead."
-            )
+        # if alias == "wcmkt":
+        #     alias = self.wcdbmap
+        # elif alias == "wcmkt3" or alias == "wcmkt2":
+        #     logger.warning(
+        #         f"Database alias '{alias}' is deprecated. Configure wcdbmap in config.py to select wcmkt2 or wcmkt3 instead."
+        #     )
 
-        if alias not in self._db_paths:
-            raise ValueError(
-                f"Unknown database alias '{alias}'. Available: {list(self._db_paths.keys())}"
-            )
+        # if alias not in self._db_paths:
+        #     raise ValueError(
+        #         f"Unknown database alias '{alias}'. Available: {list(self._db_paths.keys())}"
+        #     )
 
         self.alias = alias
         self.path = self._db_paths[alias]
@@ -169,12 +169,17 @@ class DatabaseConfig:
 
     def get_status(self):
         status_dict = {}
-        tables = self.get_table_list()
-        for table in tables:
-            with self.remote_engine.connect() as conn:
-                result = conn.execute(text(f"SELECT COUNT(*) FROM {table}")).fetchone()
-                status_dict[table] = result[0]
-            conn.close()
+        # Get tables from remote database to avoid querying tables that don't exist
+        remote_tables = self.get_table_list(local_only=False)
+        for table in remote_tables:
+            try:
+                with self.remote_engine.connect() as conn:
+                    result = conn.execute(text(f"SELECT COUNT(*) FROM {table}")).fetchone()
+                    status_dict[table] = result[0]
+                conn.close()
+            except Exception as e:
+                logger.warning(f"Failed to get status for table {table}: {e}")
+                status_dict[table] = 0
         return status_dict
 
     def get_watchlist(self):

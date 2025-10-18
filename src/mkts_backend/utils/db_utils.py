@@ -1,3 +1,4 @@
+import libsql
 import pandas as pd
 from sqlalchemy import text, insert, create_engine, select, bindparam
 from mkts_backend.config.config import DatabaseConfig
@@ -371,4 +372,7 @@ def get_time_since_update(table_name: str, remote: bool = False):
     status = check_updates(remote=remote)
     return status.get(table_name).get("time_since")
 if __name__ == "__main__":
-    pass
+    db1 = DatabaseConfig("wcnorth")
+    db2 = DatabaseConfig("wcmktnorth")
+
+    db1.sync()

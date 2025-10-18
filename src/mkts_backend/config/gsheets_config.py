@@ -178,5 +178,6 @@ class GoogleSheetConfig:
             logger.error(f"Failed to update sheet with system orders: {e}")
             return False
 
+
 if __name__ == "__main__":
     pass
