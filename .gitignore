@@ -44,3 +44,4 @@ sdeupdate.py
 src/mkts_backend/utils/debughistory.py
 items.txt
 notes.txt
+src/mkts_backend/config/backup_gsheets_config.py
