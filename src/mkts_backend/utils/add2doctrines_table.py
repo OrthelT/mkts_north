@@ -103,7 +103,7 @@ def add_items_to_doctrines_table(items: list[Doctrines], remote: bool = False):
             session.close()
             engine.dispose()
 
-def add_fit_to_doctrines_table(fit_id: int, ship_id: int, ship_name: str, remote: bool = False, dry_run: bool = False)->list[Doctrines] | None:
+def add_fit_to_doctrine_table(fit_id: int, ship_id: int, ship_name: str, remote: bool = False, dry_run: bool = False)->list[Doctrines] | None:
     """
     Add a fit to the doctrines table
     Args:

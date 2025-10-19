@@ -227,14 +227,15 @@ def process_doctrine_stats(remote: bool = False):
     doctrine_stats_df = calculate_doctrine_stats()
     doctrine_stats_df = convert_datetime_columns(doctrine_stats_df, ["timestamp"])
 
+
+    status = upsert_database(Doctrines, doctrine_stats_df)
+
     # Update Google Sheets with doctrine data
-    gsheets_status = process_gsheets(doctrine_stats_df, sheet_name='doctrine_market')
+    gsheets_status = process_gsheets(doctrine_stats_df, sheet_name='doctrines_mkt')
     if gsheets_status:
         logger.info("Doctrine data updated in Google Sheets")
     else:
         logger.error("Failed to update doctrine data in Google Sheets")
-
-    status = upsert_database(Doctrines, doctrine_stats_df)
 
 
     if status:

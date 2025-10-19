@@ -10,7 +10,8 @@ from mkts_backend.utils.get_type_info import TypeInfo
 from mkts_backend.config.config import DatabaseConfig
 from mkts_backend.config.logging_config import configure_logging
 from mkts_backend.db.sde_models import SdeInfo
-from mkts_backend.utils.add2doctrines_table import add_fit_to_doctrines_table
+from mkts_backend.utils.add2doctrines_table import select_doctrines_table, add_fit_to_doctrine_table
+from mkts_backend.utils.utils import get_type_name
 
 doctrines_fields = ['id', 'fit_id', 'ship_id', 'ship_name', 'hulls', 'type_id', 'type_name', 'fit_qty', 'fits_on_mkt', 'total_stock', 'price', 'avg_vol', 'days', 'group_id', 'group_name', 'category_id', 'category_name', 'timestamp']
 logger = configure_logging(__name__)
@@ -72,6 +73,16 @@ class Doctrine:
             ship_id = get_ship_for_fit(fit_id=fit_id, remote=self.remote)
             all_ships.append(ship_id)
         return(list(set(all_ships)))
+    
+    def add_fits(self):
+        updated_items = []
+        for fit_id in self.get_all_fit_ids():
+            ship_id = get_ship_for_fit(fit_id=fit_id, remote=self.remote)
+            ship_name = get_type_name(type_id=ship_id)
+            print(f"Adding fit {fit_id} to doctrines table")
+            print(fit_id, ship_id, ship_name)
+            updated_items.append(add_fit_to_doctrine_table(fit_id=fit_id, ship_id=ship_id, ship_name=ship_name, remote=self.remote, dry_run=False))
+        return updated_items
 
 def add_ship_target():
     db = DatabaseConfig("wcmkt")
@@ -191,7 +202,7 @@ def add_hurricane_fleet_issue_to_doctrines():
 
     return True
 
-def add_fit_to_doctrines_table(DoctrineFit: DoctrineFit):
+def add_doctrine_fit(DoctrineFit: DoctrineFit):
     db = DatabaseConfig("wcmkt")
     stmt = text("""INSERT INTO doctrines ('fit_id', 'fit_name', 'ship_id', 'ship_name', 'ship_target', 'created_at')
     VALUES (494, '2507  WC-EN Shield DPS HFI v1.0', 33157, 'Hurricane Fleet Issue', 100, '2025-07-05 00:00:00')""")
@@ -447,3 +458,5 @@ def replace_doctrines_table(df: pd.DataFrame, remote: bool = False):
 
 if __name__ == "__main__":
     pass
+
+   

@@ -165,7 +165,4 @@ def get_region_history() -> pd.DataFrame:
 
 
 if __name__ == "__main__":
-    from mkts_backend.utils.utils import get_type_name
-    df = get_market_stats(type_id=42244)
-    print(df)
-    print(get_type_name(type_id=42244))
+    pass

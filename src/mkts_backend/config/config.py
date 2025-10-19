@@ -12,7 +12,7 @@ load_dotenv()
 logger = configure_logging(__name__)
 
 class DatabaseConfig:
-    wcdbmap = "wcmkt" #select wcmkt2 (production), wcnorth (war staging), wcmkt3 (development)
+    wcdbmap = "wcnorth" #select wcmkt2 (production), wcnorth (war staging), wcmkt3 (development)
 
     _db_paths = {
         "wcnorth": "wcmktnorth.db",
