@@ -57,7 +57,7 @@ def display_cli_help():
     print("    --local: Use local database instead of remote (default: remote)")
     print("  parse-items --input=<file> --output=<file>: Parse Eve structure data and create CSV with pricing from database")
 
-def process_add_watchlist(type_ids_str: str, remote: bool = False):
+def process_add_watchlist(type_ids_str: str, remote: bool = True):
     """
     Process the add_watchlist command to add items to the watchlist.
 
@@ -97,7 +97,7 @@ def process_add_watchlist(type_ids_str: str, remote: bool = False):
         print(f"Error: {e}")
         return False
 
-def process_market_orders(esi: ESIConfig, order_type: str = "sell", test_mode: bool = False, remote: bool = False) -> bool:
+def process_market_orders(esi: ESIConfig, order_type: str = "sell", test_mode: bool = False, remote: bool = True) -> bool:
     """Fetches market orders from ESI and updates the database"""
     save_path = "data/market_orders_new.json"
     data = fetch_market_orders(esi, order_type=order_type, test_mode=test_mode)
@@ -154,7 +154,7 @@ def process_jita_history():
         logger.error("No Jita history data retrieved")
         return False
 
-def process_market_stats(remote: bool = False):
+def process_market_stats(remote: bool = True):
     logger.info("Calculating market stats")
     logger.info("syncing database")
     db = DatabaseConfig("wcmkt")
@@ -171,12 +171,6 @@ def process_market_stats(remote: bool = False):
 
     try:
         market_stats_df = calculate_market_stats()
-        status = process_gsheets(market_stats_df, sheet_name='market_data')
-        if status:
-            logger.info("Market data updated in Google Sheets")
-        else:
-            logger.error("Failed to update Google Sheets")
-            return False
     except Exception as e:
         logger.error(f"Failed to calculate market stats: {e}")
         return False
@@ -198,15 +192,15 @@ def process_market_stats(remote: bool = False):
         if status:
             log_update("marketstats",remote=True)
             logger.info(f"Market stats updated:{get_table_length('marketstats')} items")
-            return True
+            return True, market_stats_df
         else:
             logger.error("Failed to update market stats")
-            return False
+            return False, None
     except Exception as e:
         logger.error(f"Failed to update market stats: {e}")
-        return False
+        return False, None
 
-def process_doctrine_stats(remote: bool = False):
+def process_doctrine_stats(remote: bool = True):
     logger.info("Calculating doctrines stats")
     logger.info("syncing database")
     db = DatabaseConfig("wcmkt")
@@ -230,21 +224,14 @@ def process_doctrine_stats(remote: bool = False):
 
     status = upsert_database(Doctrines, doctrine_stats_df)
 
-    # Update Google Sheets with doctrine data
-    gsheets_status = process_gsheets(doctrine_stats_df, sheet_name='doctrines_mkt')
-    if gsheets_status:
-        logger.info("Doctrine data updated in Google Sheets")
-    else:
-        logger.error("Failed to update doctrine data in Google Sheets")
-
 
     if status:
         log_update("doctrines",remote=True)
         logger.info(f"Doctrines updated:{get_table_length('doctrines')} items")
-        return True
+        return True, doctrine_stats_df
     else:
         logger.error("Failed to update doctrines")
-        return False
+        return False, None
 
 
 def process_gsheets(data: pd.DataFrame, sheet_name: str = 'market_data'):
@@ -258,9 +245,12 @@ def process_gsheets(data: pd.DataFrame, sheet_name: str = 'market_data'):
         return False
     return True
 
-def main(history: bool = False, remote: bool = False):
+def main(history: bool = False, remote: bool = True):
     """Main function to process market orders, history, market stats, and doctrines"""
     # Accept flags when invoked via console_script entrypoint
+    if "--local" in sys.argv:
+        remote = False
+
     if "--check_tables" in sys.argv:
         check_tables()
         return
@@ -304,7 +294,7 @@ def main(history: bool = False, remote: bool = False):
             return
 
         # Default to remote database, use --local flag for local database
-        remote = "--local" not in sys.argv
+
 
         success = process_add_watchlist(type_ids_str, remote=remote)
         if success:
@@ -322,12 +312,15 @@ def main(history: bool = False, remote: bool = False):
     init_databases()
     logger.info("Databases initialized")
 
+
     esi = ESIConfig("primary")
     db = DatabaseConfig("wcmkt")
     logger.info(f"Database: {db.alias}")
-    if remote:    
+    if remote:
+        logger.info("Remote update mode. Validating database")
         validation_test = db.validate_sync()
     else:
+        logger.info("Local update mode. Database not validated")
         validation_test = True
 
     if not validation_test:
@@ -338,12 +331,10 @@ def main(history: bool = False, remote: bool = False):
         else:
             logger.info("database not synced")
         
-
-
     print("=" * 80)
     print("Fetching market orders")
     print("=" * 80)
-    status = process_market_orders(esi, order_type="all", test_mode=False, remote=False)
+    status = process_market_orders(esi, order_type="all", test_mode=False, remote=remote)
     if status:
         logger.info("Market orders updated")
     else:
@@ -378,23 +369,42 @@ def main(history: bool = False, remote: bool = False):
     else:
         logger.info("History mode disabled. Skipping history processing")
 
-    status = process_market_stats()
+    status, market_stats_df = process_market_stats(remote=remote)
     if status:
         logger.info("Market stats updated")
     else:
         logger.error("Failed to update market stats")
         exit()
 
-    status = process_doctrine_stats()
+    status, doctrine_stats_df = process_doctrine_stats(remote=remote)
     if status:
         logger.info("Doctrines updated")
     else:
         logger.error("Failed to update doctrines")
         exit()
 
-    
+    gsheets_status = {}
+
+    if market_stats_df is not None:
+        process_gsheets(market_stats_df, sheet_name='market_data')
+        gsheets_status['market_data'] = "success"
+    else:
+        logger.error("Failed to update market stats in Google Sheets")
+        gsheets_status['market_data'] = "failed"
+
+    if doctrine_stats_df is not None:
+        process_gsheets(doctrine_stats_df, sheet_name='doctrines_mkt')
+        gsheets_status['doctrines_mkt'] = "success"
+    else:
+        logger.error("Failed to update doctrines in Google Sheets")
+        gsheets_status['doctrines_mkt'] = "failed"
+
+    logger.info(f"Google Sheets status: {gsheets_status}")
+
     logger.info("=" * 80)
     logger.info(f"Market job complete in {time.perf_counter()-start_time:.1f}s")
+    for key, value in gsheets_status.items():
+        logger.info(f"{key}: {value}")
     logger.info("=" * 80)
 
 

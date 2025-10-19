@@ -120,7 +120,6 @@ def calculate_market_stats() -> pd.DataFrame:
     logger.info(f"Market stats calculated: {df.shape[0]} items")
     return df
 
-
 def fill_nulls_from_history(stats: pd.DataFrame) -> pd.DataFrame:
     """
     Fill nulls from market history data.
