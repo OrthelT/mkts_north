@@ -235,7 +235,7 @@ def upsert_database(table: Base, df: pd.DataFrame) -> bool:
         session.close()
         remote_engine.dispose()
     return True
-
+-
 def update_history(history_results: list[dict]):
     valid_history_columns = MarketHistory.__table__.columns.keys()
 
