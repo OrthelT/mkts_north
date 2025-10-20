@@ -6,6 +6,8 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from dotenv import load_dotenv
 from datetime import datetime, timezone
 import time
+import numpy as np
+
 
 from mkts_backend.utils.utils import (
     add_timestamp,
@@ -27,12 +29,54 @@ db = DatabaseConfig("wcmkt")
 sde_db = DatabaseConfig("sde")
 
 
-def upsert_database(table: Base, df: pd.DataFrame, remote: bool = False) -> bool:
+def upsert_database(table: Base, df: pd.DataFrame) -> bool:
     WIPE_REPLACE_TABLES = ["marketstats", "doctrines", "marketorders", "market_history"]
     tabname = table.__tablename__
     is_wipe_replace = tabname in WIPE_REPLACE_TABLES
     logger.info(f"Processing table: {tabname}, wipe_replace: {is_wipe_replace}")
     logger.info(f"Upserting {len(df)} rows into {table.__tablename__}")
+
+    # CRITICAL SAFETY CHECK: Clean all NaN/inf values before conversion to dict
+    # This is a final safety net to prevent SQLAlchemy errors
+
+    # Check for NaN values
+    # if df.isnull().any().any():
+    #     logger.warning(f"NaN values detected in {tabname} before upsert. Cleaning...")
+    #     logger.warning(f"NaN columns: {df.columns[df.isnull().any()].tolist()}")
+
+    #     # Replace inf with NaN, then fill all NaN with appropriate defaults
+    #     df = df.replace([np.inf, -np.inf], np.nan)
+
+    #     # Fill NaN in numeric columns with 0
+    #     numeric_cols = df.select_dtypes(include=['number']).columns
+    #     df[numeric_cols] = df[numeric_cols].fillna(0)
+
+    #     # Fill NaN in string columns with empty string
+    #     string_cols = df.select_dtypes(include=['object']).columns
+    #     df[string_cols] = df[string_cols].fillna('')
+
+    #     # Fill NaN in datetime columns with None (NULL)
+    #     # Must convert datetime columns to object type first to allow None values
+    #     datetime_cols = df.select_dtypes(include=['datetime', 'datetime64']).columns.tolist()
+    #     for col in datetime_cols:
+    #         # Replace NaT with None - convert column to object type first
+    #         df[col] = df[col].astype('object')
+    #         df.loc[df[col].isna(), col] = None
+
+    #     # Final check
+    #     if df.isnull().any().any():
+    #         logger.error(f"NaN values STILL present after cleaning: {df.isnull().sum()}")
+    #         # Check for non-datetime NaN
+    #         remaining_nan_cols = df.columns[df.isnull().any()].tolist()
+    #         logger.error(f"Remaining NaN in columns: {remaining_nan_cols}")
+    #         # Last resort: fill non-datetime with 0, datetime with None
+    #         for col in remaining_nan_cols:
+    #             if col not in datetime_cols:
+    #                 df[col] = df[col].fillna(0)
+    #             else:
+    #                 df[col] = df[col].astype('object')
+    #                 df.loc[df[col].isna(), col] = None
+
     data = df.to_dict(orient="records")
 
     MAX_PARAMETER_BYTES = 256 * 1024
@@ -47,9 +91,9 @@ def upsert_database(table: Base, df: pd.DataFrame, remote: bool = False) -> bool
     )
 
     db = DatabaseConfig("wcmkt")
-    logger.info(f"updating: {db.alias}, remote: {remote}, path: {db.path}")
+    logger.info(f"updating: {db}")
 
-    remote_engine = db.remote_engine if remote else db.engine
+    remote_engine = db.remote_engine
     session = Session(bind=remote_engine)
 
     t = table.__table__
@@ -192,7 +236,7 @@ def upsert_database(table: Base, df: pd.DataFrame, remote: bool = False) -> bool
         remote_engine.dispose()
     return True
 
-def update_history(history_results: list[dict], remote: bool = False):
+def update_history(history_results: list[dict]):
     valid_history_columns = MarketHistory.__table__.columns.keys()
 
     flattened_history = []
@@ -256,43 +300,23 @@ def update_history(history_results: list[dict], remote: bool = False):
     history_df.infer_objects()
     history_df.fillna(0)
 
-    # Ensure table exists in the target database
-    db = DatabaseConfig("wcmkt")
-    target_engine = db.remote_engine if remote else db.engine
     try:
-        Base.metadata.create_all(target_engine, tables=[MarketHistory.__table__])
-        logger.info(f"Ensured market_history table exists in {'remote' if remote else 'local'} database")
-    except Exception as e:
-        logger.error(f"Failed to ensure market_history table exists: {e}")
-        return False
-
-    try:
-        upsert_database(MarketHistory, history_df, remote=remote)
+        upsert_database(MarketHistory, history_df)
     except Exception as e:
         logger.error(f"history data update failed: {e}")
         return False
 
-    # Check the specific table we just updated
-    try:
-        from sqlalchemy import text
-        with target_engine.connect() as conn:
-            result = conn.execute(text("SELECT COUNT(*) FROM market_history")).fetchone()
-            status = result[0]
-        conn.close()
-    except Exception as e:
-        logger.error(f"Failed to verify market_history table: {e}")
-        return False
-
+    status = get_remote_status()['market_history']
     if status > 0:
-        logger.info(f"History updated: {status} items in {'remote' if remote else 'local'} database")
-        print(f"History updated: {status} items")
+        logger.info(f"History updated:{get_table_length('market_history')} items")
+        print(f"History updated:{get_table_length('market_history')} items")
     else:
         logger.error("Failed to update market history")
         return False
     return True
 
 
-def update_market_orders(orders: list[dict], remote: bool = False) -> bool:
+def update_market_orders(orders: list[dict]) -> bool:
     orders_df = pd.DataFrame.from_records(orders)
     type_names = get_type_names_from_df(orders_df)
     orders_df = orders_df.merge(type_names, on="type_id", how="left")
@@ -307,7 +331,7 @@ def update_market_orders(orders: list[dict], remote: bool = False) -> bool:
     orders_df = validate_columns(orders_df, valid_columns)
 
     logger.info(f"Orders fetched:{len(orders_df)} items")
-    status = upsert_database(MarketOrders, orders_df, remote=remote)
+    status = upsert_database(MarketOrders, orders_df)
     if status:
         logger.info(f"Orders updated:{get_table_length('marketorders')} items")
         return True
@@ -350,7 +374,7 @@ def update_region_orders(region_id: int, order_type: str = 'sell') -> pd.DataFra
 
     return pd.DataFrame(orders)
 
-def update_jita_history(jita_records: list[JitaHistory], remote: bool = False) -> bool:
+def update_jita_history(jita_records: list[JitaHistory]) -> bool:
     """Update JitaHistory table with Jita history data"""
     if not jita_records:
         logger.error("No Jita history data to process")
@@ -376,25 +400,15 @@ def update_jita_history(jita_records: list[JitaHistory], remote: bool = False) -
     valid_columns = JitaHistory.__table__.columns.keys()
     jita_df = validate_columns(jita_df, valid_columns)
 
-    # Ensure table exists in the target database
-    db = DatabaseConfig("wcmkt")
-    target_engine = db.remote_engine if remote else db.engine
     try:
-        Base.metadata.create_all(target_engine, tables=[JitaHistory.__table__])
-        logger.info(f"Ensured jita_history table exists in {'remote' if remote else 'local'} database")
-    except Exception as e:
-        logger.error(f"Failed to ensure jita_history table exists: {e}")
-        return False
-
-    try:
-        upsert_database(JitaHistory, jita_df, remote=remote)
+        upsert_database(JitaHistory, jita_df)
         logger.info(f"Jita history updated: {len(jita_records)} records")
         return True
     except Exception as e:
         logger.error(f"Jita history update failed: {e}")
         return False
 
-def log_update(table_name: str, remote: bool = False):
+def log_update(table_name: str, remote: bool = True):
     db = DatabaseConfig("wcmkt")
     engine = db.remote_engine if remote else db.engine
 

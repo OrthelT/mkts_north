@@ -97,7 +97,7 @@ def process_add_watchlist(type_ids_str: str, remote: bool = True):
         print(f"Error: {e}")
         return False
 
-def process_market_orders(esi: ESIConfig, order_type: str = "sell", test_mode: bool = False, remote: bool = True) -> bool:
+def process_market_orders(esi: ESIConfig, order_type: str = "sell", test_mode: bool = False) -> bool:
     """Fetches market orders from ESI and updates the database"""
     save_path = "data/market_orders_new.json"
     data = fetch_market_orders(esi, order_type=order_type, test_mode=test_mode)
@@ -105,9 +105,9 @@ def process_market_orders(esi: ESIConfig, order_type: str = "sell", test_mode: b
         with open(save_path, "w") as f:
             json.dump(data, f)
         logger.info(f"ESI returned {len(data)} market orders. Saved to {save_path}")
-        status = update_market_orders(data, remote=remote)
+        status = update_market_orders(data)
         if status:
-            log_update("marketorders",remote=remote)
+            log_update("marketorders")
             logger.info(f"Orders updated:{get_table_length('marketorders')} items")
             return True
         else:
@@ -126,7 +126,7 @@ def process_history():
     if data:
         with open("data/market_history_new.json", "w") as f:
             json.dump(data, f)
-        status = update_history(data, remote=True)
+        status = update_history(data)
         if status:
             log_update("market_history",remote=True)
             logger.info(f"History updated:{get_table_length('market_history')} items")
@@ -245,10 +245,12 @@ def process_gsheets(data: pd.DataFrame, sheet_name: str = 'market_data'):
         return False
     return True
 
-def main(history: bool = False, remote: bool = True):
+def main(history: bool = False, remote: bool = False):
     """Main function to process market orders, history, market stats, and doctrines"""
     # Accept flags when invoked via console_script entrypoint
-    if "--local" in sys.argv:
+    if "--remote" in sys.argv:
+        remote = True
+    elif "--local" in sys.argv:
         remote = False
 
     if "--check_tables" in sys.argv:
@@ -277,6 +279,8 @@ def main(history: bool = False, remote: bool = True):
         else:
             print("Parse items command failed")
         return
+    
+    remote = True
 
     # Handle add_watchlist command
     if "add_watchlist" in sys.argv:
@@ -334,7 +338,7 @@ def main(history: bool = False, remote: bool = True):
     print("=" * 80)
     print("Fetching market orders")
     print("=" * 80)
-    status = process_market_orders(esi, order_type="all", test_mode=False, remote=remote)
+    status = process_market_orders(esi, order_type="all", test_mode=False)
     if status:
         logger.info("Market orders updated")
     else:
