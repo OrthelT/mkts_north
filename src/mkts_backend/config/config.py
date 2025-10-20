@@ -15,7 +15,7 @@ class DatabaseConfig:
     wcdbmap = "wcnorth" #select wcmkt2 (production), wcnorth (war staging), wcmkt3 (development)
 
     _db_paths = {
-        "wcnorth": "wcmktnorth.db",
+        "wcnorth": "wcmktnorth2.db",
         "sde": "sde_info.db",
         "fittings": "wcfitting.db",
         "wcmkt": "wcmkt2.db",
@@ -198,6 +198,9 @@ class DatabaseConfig:
             logger.info(f"Database file exists: {self.path}")
 
         return True
+    def get_db_turso_url(self):
+        return self.turso_url
 
 if __name__ == "__main__":
-    pass
+    db = DatabaseConfig("wcmkt")
+    print(repr(db.get_db_turso_url()))

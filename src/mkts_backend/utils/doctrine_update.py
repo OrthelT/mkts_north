@@ -1,10 +1,12 @@
 import datetime
 from dataclasses import dataclass, field
+from numpy._core.multiarray import scalar
 from numpy.ma import count
 import pandas as pd
 from sqlalchemy import text, select
 from sqlalchemy.orm import Session
 from mkts_backend.db.models import Doctrines, LeadShips, DoctrineFit, Base
+from mkts_backend.db.fit_models import WatchDoctrines
 from mkts_backend.db.db_queries import get_watchlist_ids, get_fit_ids, get_fit_items
 from mkts_backend.utils.get_type_info import TypeInfo
 from mkts_backend.config.config import DatabaseConfig
@@ -456,7 +458,20 @@ def replace_doctrines_table(df: pd.DataFrame, remote: bool = False):
     add_doctrines_to_table(df, remote=True)
     check_doctrines_table(remote=True)
 
-if __name__ == "__main__":
-    pass
+def get_watch_doctrines(remote: bool = False):
+    db = DatabaseConfig("fittings")
+    engine = db.engine
+    session = Session(bind=engine)
+    result = {}
+    with session.begin():
+        doctrin_data = session.scalars(select(WatchDoctrines))
+        for row in doctrin_data:
+            result[row.id] = row.name
+            print(row.id, row.name)
+    session.close()
+    engine.dispose()
+    return result
 
-   
+if __name__ == "__main__":
+    doctrines = get_watch_doctrines(remote=True)
+    

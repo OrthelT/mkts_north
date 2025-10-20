@@ -47,7 +47,7 @@ def upsert_database(table: Base, df: pd.DataFrame, remote: bool = False) -> bool
     )
 
     db = DatabaseConfig("wcmkt")
-    logger.info(f"updating: {db}")
+    logger.info(f"updating: {db.alias}, remote: {remote}, path: {db.path}")
 
     remote_engine = db.remote_engine if remote else db.engine
     session = Session(bind=remote_engine)

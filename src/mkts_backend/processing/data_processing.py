@@ -100,7 +100,6 @@ def calculate_market_stats() -> pd.DataFrame:
     df = df.merge(df2, on="type_id", how="left")
     df = df.rename(columns={"5_perc_price": "price"})
 
-
     df = fill_nulls_from_history(df)
 
 
