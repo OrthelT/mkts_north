@@ -2,11 +2,11 @@ import os
 from sqlalchemy import create_engine, text
 import pandas as pd
 import pathlib
-# os.environ.setdefault("RUST_LOG", "debug")
+#os.environ.setdefault("RUST_LOG", "debug")
 import libsql
 from dotenv import load_dotenv
 from mkts_backend.config.logging_config import configure_logging
-
+from datetime import datetime
 load_dotenv()
 
 logger = configure_logging(__name__)
@@ -86,6 +86,7 @@ class DatabaseConfig:
 
     @property
     def libsql_sync_connect(self):
+        logger.info(f"Connecting to libsql sync: path={self.path}, url={self.turso_url}, token={self.token[:10]}...")
         self._libsql_sync_connect = libsql.connect(
                 f"{self.path}", sync_url=self.turso_url, auth_token=self.token
             )
@@ -99,6 +100,7 @@ class DatabaseConfig:
 
     def sync(self):
         conn = self.libsql_sync_connect
+        logger.info(f"Syncing database: alias={self.alias}, path={self.path}")
         with conn:
             conn.sync()
         conn.close()
@@ -110,11 +112,29 @@ class DatabaseConfig:
         with self.engine.connect() as conn:
             result = conn.execute(text("SELECT MAX(last_update) FROM marketstats")).fetchone()
             local_last_update = result[0]
-        logger.info(f"remote_last_update: {remote_last_update}")
-        logger.info(f"local_last_update: {local_last_update}")
-        validation_test = remote_last_update == local_last_update
-        logger.info(f"validation_test: {validation_test}")
-        return validation_test
+
+        # Convert string timestamps to datetime objects for proper comparison
+        if isinstance(remote_last_update, str):
+            remote_dt = datetime.fromisoformat(remote_last_update)
+        else:
+            remote_dt = remote_last_update
+
+        if isinstance(local_last_update, str):
+            local_dt = datetime.fromisoformat(local_last_update)
+        else:
+            local_dt = local_last_update
+
+        logger.info(f"remote_last_update: {remote_dt}, {type(remote_dt)}")
+        logger.info(f"local_last_update: {local_dt}")
+
+        # Sync is valid if local is up-to-date (equal or newer than remote)
+        # Only fail if remote is MORE RECENT than local
+        if local_dt >= remote_dt:
+            return True
+        else:
+            logger.warning(f"Sync validation failed: remote ({remote_dt}) is more recent than local ({local_dt})")
+            return False
+
 
     def get_table_list(self, local_only: bool = True) -> list[tuple]:
         if local_only:
@@ -203,4 +223,7 @@ class DatabaseConfig:
 
 if __name__ == "__main__":
     db = DatabaseConfig("wcmkt")
-    print(repr(db.get_db_turso_url()))
+
+
+    print(db.validate_sync())
+

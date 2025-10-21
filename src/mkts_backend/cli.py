@@ -202,21 +202,21 @@ def process_market_stats(remote: bool = True):
 
 def process_doctrine_stats(remote: bool = True):
     logger.info("Calculating doctrines stats")
-    logger.info("syncing database")
     db = DatabaseConfig("wcmkt")
+
+    # Validate first, then sync only if needed (same pattern as main())
     if remote:
-        db.sync()
-    logger.info("database synced")
-    logger.info("validating database")
-    if remote:
+        logger.info("Validating database sync status")
         validation_test = db.validate_sync()
+        if not validation_test:
+            logger.warning("Database not up to date. Syncing from remote...")
+            db.sync()
+            logger.info("Database synced")
+        else:
+            logger.info("Database already up to date")
     else:
+        logger.info("Local mode - skipping validation")
         validation_test = True
-    if validation_test:
-        logger.info("database validated")
-    else:
-        logger.error("database validation failed")
-        raise Exception("database validation failed in doctrines stats")
 
     doctrine_stats_df = calculate_doctrine_stats()
     doctrine_stats_df = convert_datetime_columns(doctrine_stats_df, ["timestamp"])
@@ -245,11 +245,13 @@ def process_gsheets(data: pd.DataFrame, sheet_name: str = 'market_data'):
         return False
     return True
 
-def main(history: bool = False, remote: bool = True):
+def main(history: bool = False):
     """Main function to process market orders, history, market stats, and doctrines"""
     # Accept flags when invoked via console_script entrypoint
     if "--local" in sys.argv:
         remote = False
+    else:
+        remote = True
 
     if "--check_tables" in sys.argv:
         check_tables()
