@@ -18,21 +18,21 @@ class DatabaseConfig:
         "wcnorth": "wcmktnorth2.db",
         "sde": "sde_info.db",
         "fittings": "wcfitting.db",
-        "wcmkt": "wcmkt2.db",
+        "wc2": "wcmkt2.db",
     }
 
     _db_turso_urls = {
         "wcnorth_turso": os.getenv("wcmktnorth_url"),
         "sde_turso": os.getenv("TURSO_SDE_URL"),
         "fittings_turso": os.getenv("TURSO_FITTING_URL"),
-        "wcmkt_turso": os.getenv("wcmkt2_url"),
+        "wc2_turso": os.getenv("wcmkt2_url"),
     }
 
     _db_turso_auth_tokens = {
         "wcnorth_turso": os.getenv("wcmktnorth_token"),
         "sde_turso": os.getenv("TURSO_SDE_TOKEN"),
         "fittings_turso": os.getenv("TURSO_FITTING_TOKEN"),
-        "wcmkt_turso": os.getenv("wcmkt2_token"),
+        "wc2_turso": os.getenv("wcmkt2_token"),
     }
 
     def __init__(self, alias: str, dialect: str = "sqlite+libsql"):
@@ -222,8 +222,5 @@ class DatabaseConfig:
         return self.turso_url
 
 if __name__ == "__main__":
-    db = DatabaseConfig("wcmkt")
-
-
-    print(db.validate_sync())
-
+    pass
+    
