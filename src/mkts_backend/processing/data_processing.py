@@ -46,7 +46,9 @@ def calculate_5_percentile_price() -> pd.DataFrame:
     df.columns = ["type_id", "5_perc_price"]
     return df
 
-def calculate_market_stats() -> pd.DataFrame:
+def calculate_market_stats(remote: bool = True) -> pd.DataFrame:
+
+
     query = """
     SELECT
     w.type_id,
@@ -88,10 +90,11 @@ def calculate_market_stats() -> pd.DataFrame:
     ) AS h ON w.type_id = h.type_id
     """
     db = DatabaseConfig("wcmkt")
-    engine = db.engine
+    engine = db.remote_engine if remote else db.engine
     with engine.connect() as conn:
         df = pd.read_sql_query(query, conn)
         logger.info(f"Market stats queried: {df.shape[0]} items")
+    conn.close()
     engine.dispose()
 
     logger.info("Calculating 5 percentile price")

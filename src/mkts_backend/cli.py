@@ -156,21 +156,10 @@ def process_jita_history():
 
 def process_market_stats(remote: bool = True):
     logger.info("Calculating market stats")
-    logger.info("syncing database")
-    db = DatabaseConfig("wcmkt")
-    if remote:
-        db.sync()
-        logger.info("database synced")
-        logger.info("validating database")
-        validation_test = db.validate_sync()
-        if validation_test:
-            logger.info("database validated")
-        else:
-            logger.error("database validation failed")
-            raise Exception("database validation failed in market stats")
+
 
     try:
-        market_stats_df = calculate_market_stats()
+        market_stats_df = calculate_market_stats(remote=remote)
     except Exception as e:
         logger.error(f"Failed to calculate market stats: {e}")
         return False
@@ -188,9 +177,9 @@ def process_market_stats(remote: bool = True):
         return False
     try:
         logger.info("Updating market stats in database")
-        status = upsert_database(MarketStats, market_stats_df)
+        status = upsert_database(MarketStats, market_stats_df, remote=remote)
         if status:
-            log_update("marketstats",remote=True)
+            log_update("marketstats",remote=remote)
             logger.info(f"Market stats updated:{get_table_length('marketstats')} items")
             return True, market_stats_df
         else:
@@ -202,31 +191,18 @@ def process_market_stats(remote: bool = True):
 
 def process_doctrine_stats(remote: bool = True):
     logger.info("Calculating doctrines stats")
-    db = DatabaseConfig("wcmkt")
-
-    # Validate first, then sync only if needed (same pattern as main())
-    if remote:
-        logger.info("Validating database sync status")
-        validation_test = db.validate_sync()
-        if not validation_test:
-            logger.warning("Database not up to date. Syncing from remote...")
-            db.sync()
-            logger.info("Database synced")
-        else:
-            logger.info("Database already up to date")
-    else:
-        logger.info("Local mode - skipping validation")
-        validation_test = True
+    # Note: Database sync happens at the beginning of main() and end of execution
+    # Syncing here causes WAL conflicts with existing SQLAlchemy connections
 
     doctrine_stats_df = calculate_doctrine_stats()
     doctrine_stats_df = convert_datetime_columns(doctrine_stats_df, ["timestamp"])
 
 
-    status = upsert_database(Doctrines, doctrine_stats_df)
+    status = upsert_database(Doctrines, doctrine_stats_df, remote=remote)
 
 
     if status:
-        log_update("doctrines",remote=True)
+        log_update("doctrines",remote=remote)
         logger.info(f"Doctrines updated:{get_table_length('doctrines')} items")
         return True, doctrine_stats_df
     else:
@@ -319,19 +295,10 @@ def main(history: bool = False):
     db = DatabaseConfig("wcmkt")
     logger.info(f"Database: {db.alias}")
     if remote:
-        logger.info("Remote update mode. Validating database")
-        validation_test = db.validate_sync()
+        logger.info("Remote update mode. All writes go directly to Turso.")
+        logger.info("Skipping local database validation - local db only used for reads")
     else:
-        logger.info("Local update mode. Database not validated")
-        validation_test = True
-
-    if not validation_test:
-        logger.warning("wcmkt database is not up to date. Updating...")
-        if remote:
-            db.sync()
-            logger.info("database synced")
-        else:
-            logger.info("database not synced")
+        logger.info("Local update mode. All operations use local database only.")
         
     print("=" * 80)
     print("Fetching market orders")
@@ -402,6 +369,11 @@ def main(history: bool = False):
         gsheets_status['doctrines_mkt'] = "failed"
 
     logger.info(f"Google Sheets status: {gsheets_status}")
+
+    if remote:
+        logger.info("Syncing database")
+        db.sync()
+        logger.info("Database synced")
 
     logger.info("=" * 80)
     logger.info(f"Market job complete in {time.perf_counter()-start_time:.1f}s")

@@ -2,7 +2,7 @@ import os
 from sqlalchemy import create_engine, text
 import pandas as pd
 import pathlib
-#os.environ.setdefault("RUST_LOG", "debug")
+os.environ.setdefault("RUST_LOG", "debug")
 import libsql
 from dotenv import load_dotenv
 from mkts_backend.config.logging_config import configure_logging
@@ -86,10 +86,11 @@ class DatabaseConfig:
 
     @property
     def libsql_sync_connect(self):
-        logger.info(f"Connecting to libsql sync: path={self.path}, url={self.turso_url}, token={self.token[:10]}...")
-        self._libsql_sync_connect = libsql.connect(
-                f"{self.path}", sync_url=self.turso_url, auth_token=self.token
-            )
+        if self._libsql_sync_connect is None:
+            logger.info(f"Connecting to libsql sync: path={self.path}, url={self.turso_url}, token={self.token[:10]}...")
+            self._libsql_sync_connect = libsql.connect(
+                    f"{self.path}", sync_url=self.turso_url, auth_token=self.token
+                )
         return self._libsql_sync_connect
 
     @property
