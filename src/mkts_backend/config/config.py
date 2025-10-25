@@ -16,7 +16,7 @@ class DatabaseConfig:
 
     _db_paths = {
         "wcnorth": "wcmktnorth2.db",
-        "sde": "sde_info.db",
+        "sde": "sdeinfo.db",
         "fittings": "wcfitting.db",
         "wc2": "wcmkt2.db",
     }
@@ -203,8 +203,8 @@ class DatabaseConfig:
                 status_dict[table] = 0
         return status_dict
 
-    def get_watchlist(self):
-        engine = self.engine
+    def get_watchlist(self, remote: bool = False):
+        engine = self.remote_engine if remote else self.engine
         with engine.connect() as conn:
             df = pd.read_sql_table("watchlist", conn)
         conn.close()

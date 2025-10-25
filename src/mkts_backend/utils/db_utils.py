@@ -46,7 +46,7 @@ def add_missing_items_to_watchlist(missing_items: list[int], remote: bool = Fals
     # Filter out items that already exist in watchlist
     existing_type_ids = set(watchlist['type_id'].tolist())
     new_items = df[~df['type_id'].isin(existing_type_ids)]
-    logger.info(f"New items: {new_items}")
+    
 
     if new_items.empty:
         logger.info("All provided items already exist in watchlist")
@@ -55,6 +55,8 @@ def add_missing_items_to_watchlist(missing_items: list[int], remote: bool = Fals
     # Prepare data for insertion
     inv_cols = ['type_id', 'type_name', 'group_id', 'group_name', 'category_id', 'category_name']
     new_items = new_items[inv_cols]
+    logger.info(f"New items: {new_items}")
+    print(f"New items: {new_items}")
 
     # Save updated watchlist to CSV for backup
     updated_watchlist = pd.concat([watchlist, new_items], ignore_index=True)
@@ -65,7 +67,8 @@ def add_missing_items_to_watchlist(missing_items: list[int], remote: bool = Fals
     try:
         # Use the existing upsert_database function to handle conflicts properly
         success = upsert_database(Watchlist, new_items)
-
+        logger.info(f"Success: {success}")
+        
         if success:
             logger.info(f"Successfully added {len(new_items)} new items to watchlist")
             return f"Added {len(new_items)} items to watchlist: {new_items['type_name'].tolist()}"
@@ -116,6 +119,33 @@ def update_watchlist_tables(missing_items: list[int]):
                 logger.info(f"Added {row['type_name']} (ID: {row['type_id']}) to watchlist")
             except Exception as e:
                 logger.warning(f"Item {row['type_id']} may already exist in watchlist: {e}")
+
+def update_watchlist_from_csv(csv_file: str, remote: bool = False):
+    df = pd.read_csv(csv_file)
+    
+    engine = wcmkt_db.remote_engine if remote else wcmkt_db.engine
+
+    with engine.connect() as conn:
+        stmt = text("DELETE FROM watchlist")
+        conn.execute(stmt)
+        conn.commit()
+        logger.info("Deleted existing watchlist")
+    conn.close()
+
+    try:
+        with engine.connect() as conn:
+            df.to_sql("watchlist", conn, if_exists="replace", index=False)
+        conn.commit()
+        logger.info(f"Added {len(df)} rows to watchlist")
+    except Exception as e:
+        logger.error(f"Error updating watchlist from CSV: {e}")
+        return False
+    finally:
+        if 'engine' in locals():
+            engine.dispose()
+    conn.close()
+    engine.dispose()
+    return True
 
 
 def restore_doctrines_from_backup(backup_db_path: str, target_db_alias: str = "wcmkt"):

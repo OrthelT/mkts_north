@@ -14,7 +14,7 @@ from mkts_backend.config.logging_config import configure_logging
 from mkts_backend.db.sde_models import SdeInfo
 from mkts_backend.utils.add2doctrines_table import select_doctrines_table, add_fit_to_doctrine_table
 from mkts_backend.utils.utils import get_type_name
-
+from mkts_backend.utils.db_utils import add_missing_items_to_watchlist
 doctrines_fields = ['id', 'fit_id', 'ship_id', 'ship_name', 'hulls', 'type_id', 'type_name', 'fit_qty', 'fits_on_mkt', 'total_stock', 'price', 'avg_vol', 'days', 'group_id', 'group_name', 'category_id', 'category_name', 'timestamp']
 logger = configure_logging(__name__)
 
@@ -439,19 +439,24 @@ def add_doctrines_to_table(df: pd.DataFrame, remote: bool = False):
     engine.dispose()
     print(f"Added {len(df)} rows to doctrines table")
 
-def check_doctrines_table(remote: bool = False):
+def check_doctrines_table(remote: bool = False, fit_id: int = None):
     db = DatabaseConfig("wcmkt")
     engine = db.remote_engine if remote else db.engine
     session = Session(bind=engine)
     row_count = 0
+    type_ids = []
     with session.begin():
-        result = session.execute(select(Doctrines))
+        if fit_id:
+            result = session.scalars(select(Doctrines).where(Doctrines.fit_id == fit_id))
+        else:
+            result = session.scalars(select(Doctrines))
+        if fit_id:
+            result = session.execute(select(Doctrines).where(Doctrines.fit_id == fit_id))
         for row in result:
-            print(row)
-            row_count += 1
+            type_ids.append(row[0].type_id)
     session.close()
     engine.dispose()
-    print(f"Doctrines table checked, {row_count} rows found")
+    return type_ids
 
 def replace_doctrines_table(df: pd.DataFrame, remote: bool = False):
     df = df.rename(columns={"quantity": "fit_qty"})
@@ -473,5 +478,4 @@ def get_watch_doctrines(remote: bool = False):
     return result
 
 if __name__ == "__main__":
-    doctrines = get_watch_doctrines(remote=True)
-    
+    pass
