@@ -1,13 +1,13 @@
 import libsql
 import pandas as pd
-from sqlalchemy import text, insert, create_engine, select, bindparam
+from sqlalchemy import text, insert, create_engine, select, bindparam, func
 from mkts_backend.config.config import DatabaseConfig
 from mkts_backend.config.logging_config import configure_logging
 from mkts_backend.db.models import Watchlist, UpdateLog
+from mkts_backend.db.sde_models import SdeInfo
 from datetime import datetime, timezone, timedelta
 from sqlalchemy.orm import Session
-from mkts_backend.db.db_handlers import upsert_database
-from mkts_backend.db.db_queries import get_watchlist_ids
+from mkts_backend.db.db_handlers import update_watchlist
 
 logger = configure_logging(__name__)
 
@@ -47,38 +47,14 @@ def add_missing_items_to_watchlist(missing_items: list[int], remote: bool = Fals
     existing_type_ids = set(watchlist['type_id'].tolist())
     new_items = df[~df['type_id'].isin(existing_type_ids)]
     
-
     if new_items.empty:
         logger.info("All provided items already exist in watchlist")
         return f"All {len(missing_items)} items already exist in watchlist"
 
     # Prepare data for insertion
     inv_cols = ['type_id', 'type_name', 'group_id', 'group_name', 'category_id', 'category_name']
-    new_items = new_items[inv_cols]
-    logger.info(f"New items: {new_items}")
-    print(f"New items: {new_items}")
-
-    # Save updated watchlist to CSV for backup
-    updated_watchlist = pd.concat([watchlist, new_items], ignore_index=True)
-    updated_watchlist.to_csv("data/watchlist_updated.csv", index=False)
-    logger.info(f"Saved updated watchlist to data/watchlist_updated.csv")
-
-    # Insert new items into database using proper upsert to avoid duplicates
-    try:
-        # Use the existing upsert_database function to handle conflicts properly
-        success = upsert_database(Watchlist, new_items)
-        logger.info(f"Success: {success}")
-        
-        if success:
-            logger.info(f"Successfully added {len(new_items)} new items to watchlist")
-            return f"Added {len(new_items)} items to watchlist: {new_items['type_name'].tolist()}"
-        else:
-            logger.error("Failed to add items to watchlist")
-            return "Failed to add items to watchlist"
-
-    except Exception as e:
-        logger.error(f"Error adding items to watchlist: {e}")
-        return f"Error adding items to watchlist: {e}"
+    new_items = new_items[inv_cols].to_dict(orient="records")
+    update_watchlist(watchlist=new_items, remote=remote)
 
 def get_type_info(type_ids: list[int], remote: bool = False):
     engine = sde_db.engine if remote else sde_db.remote_engine
@@ -90,35 +66,62 @@ def get_type_info(type_ids: list[int], remote: bool = False):
         df = df.rename(columns={"typeID": "type_id", "typeName": "type_name", "groupID": "group_id", "groupName": "group_name", "categoryID": "category_id", "categoryName": "category_name"})
     return df
 
-def update_watchlist_tables(missing_items: list[int]):
-    engine = sde_db.engine
-    with engine.connect() as conn:
-        from sqlalchemy import bindparam
-        stmt = text("SELECT * FROM inv_info WHERE typeID IN :missing").bindparams(bindparam('missing', expanding=True))
-        df = pd.read_sql_query(stmt, conn)
 
-    inv_cols = ['typeID', 'typeName', 'groupID', 'groupName', 'categoryID', 'categoryName']
-    watchlist_cols = ['type_id', 'type_name', 'group_id', 'group_name', 'category_id', 'category_name']
-    df = df[inv_cols]
-    df = df.rename(columns=dict(zip(inv_cols, watchlist_cols)))
+def new_update_watchlist_db_table(watchlist: list[Watchlist], remote: bool = False)->bool:
+    db = DatabaseConfig("wcmkt")
+    engine = db.remote_engine if remote else db.engine
+    session = Session(bind=engine)
+    try:
+        with session.begin():
+            added_count = 0
+            skipped_count = 0
 
-    engine = wcmkt_db.engine
-    with engine.connect() as conn:
-        for _, row in df.iterrows():
-            stmt = insert(Watchlist).values(
-                type_id=row['type_id'],
-                type_name=row['type_name'],
-                group_id=row['group_id'],
-                group_name=row['group_name'],
-                category_id=row['category_id'],
-                category_name=row['category_name']
-            )
-            try:
-                conn.execute(stmt)
-                conn.commit()
-                logger.info(f"Added {row['type_name']} (ID: {row['type_id']}) to watchlist")
-            except Exception as e:
-                logger.warning(f"Item {row['type_id']} may already exist in watchlist: {e}")
+            for item in watchlist:
+                # Check if this type_id already exists
+                existing = session.scalar(
+                    select(Watchlist).where(Watchlist.type_id == item.type_id)
+                )
+
+                if existing:
+                    logger.info(f"Skipping duplicate: {item.type_name} (type_id: {item.type_id}) already exists in watchlist")
+                    skipped_count += 1
+                else:
+                    # Create a new instance to avoid detached instance errors
+                    new_item = Watchlist(
+                        type_id=item.type_id,
+                        type_name=item.type_name,
+                        group_id=item.group_id,
+                        group_name=item.group_name,
+                        category_id=item.category_id,
+                        category_name=item.category_name
+                    )
+                    session.add(new_item)
+                    logger.info(f"Added {item.type_name} to watchlist")
+                    added_count += 1
+
+            logger.info(f"Watchlist update completed: {added_count} items added, {skipped_count} duplicates skipped")
+    except Exception as e:
+        logger.error(f"Error updating watchlist: {e}")
+        return False
+    finally:
+        session.close()
+        engine.dispose()
+    return True
+
+def new_update_watchlist_table_from_list(missing_type_ids: list[int], remote: bool = False)->bool:
+    engine = sde_db.remote_engine if remote else sde_db.engine
+    session = Session(bind=engine)
+    updates = []
+    try:
+        with session.begin():
+            result = session.scalars(select(SdeInfo).where(SdeInfo.typeID.in_(missing_type_ids)))
+            result = [Watchlist(type_id=row.typeID, type_name=row.typeName, group_id=row.groupID, group_name=row.groupName, category_id=row.categoryID, category_name=row.categoryName) for row in result]
+            updates.extend(result)
+    finally:
+        session.close()
+        engine.dispose()
+    update_status = new_update_watchlist_db_table(updates, remote=remote)
+    return update_status
 
 def update_watchlist_from_csv(csv_file: str, remote: bool = False):
     df = pd.read_csv(csv_file)
@@ -146,7 +149,6 @@ def update_watchlist_from_csv(csv_file: str, remote: bool = False):
     conn.close()
     engine.dispose()
     return True
-
 
 def restore_doctrines_from_backup(backup_db_path: str, target_db_alias: str = "wcmkt"):
     """
@@ -296,11 +298,13 @@ def get_most_recent_updates(table_name: str, remote: bool = False):
     db = DatabaseConfig("wcmkt")
     engine = db.remote_engine if remote else db.engine
     session = Session(bind=engine)
-    with session.begin():
-        updates = select(UpdateLog.timestamp).where(UpdateLog.table_name == table_name).order_by(UpdateLog.timestamp.desc())
-        result = session.execute(updates).scalar_one()
-    session.close()
-    engine.dispose()
+    try:
+        with session.begin():
+            updates = select(UpdateLog.timestamp).where(UpdateLog.table_name == table_name).order_by(UpdateLog.timestamp.desc())
+            result = session.execute(updates).scalar_one()
+    finally:
+        session.close()
+        engine.dispose()
     return result
 
 def check_updates(remote: bool = False):
@@ -399,5 +403,45 @@ def check_updates(remote: bool = False):
 def get_time_since_update(table_name: str, remote: bool = False):
     status = check_updates(remote=remote)
     return status.get(table_name).get("time_since")
+
+def check_items_in_watchlist(type_ids: list[int], remote: bool = False)->list[dict]:
+    db = DatabaseConfig("wcmkt")
+    engine = db.remote_engine if remote else db.engine
+    session = Session(bind=engine)
+    try:
+        with session.begin():
+            result = session.scalars(select(Watchlist).where(Watchlist.type_id.in_(type_ids)))
+            result = [{'type_id': row.type_id, 'type_name': row.type_name} for row in result]
+    finally:
+        session.close()
+        engine.dispose()
+    return result
+
+
+def get_watchlist_info(type_ids: list[int]) -> list[Watchlist]:
+    db = DatabaseConfig("sde")
+    engine = db.engine
+    watchlist_info = []
+    with engine.connect() as conn:
+        stmt = text("SELECT * FROM inv_info WHERE typeID IN :type_ids").bindparams(bindparam('type_ids', expanding=True))
+        res = conn.execute(stmt, {"type_ids": type_ids})
+        for row in res:
+            watchlist_info.append(Watchlist(type_id=row.typeID, type_name=row.typeName, group_id=row.groupID, group_name=row.groupName, category_id=row.categoryID, category_name=row.categoryName))
+    engine.dispose()
+    return watchlist_info
+
+def get_watchlist_count(remote: bool = False):
+    db = DatabaseConfig("wcmkt")
+    engine = db.remote_engine if remote else db.engine
+    session = Session(bind=engine)
+    try:
+        with session.begin():
+            result = session.execute(select(func.count()).select_from(Watchlist)).scalar_one()
+            print(f"Number of items in watchlist: {result}")
+    finally:
+        session.close()
+        engine.dispose()
+    return result
+
 if __name__ == "__main__":
     pass

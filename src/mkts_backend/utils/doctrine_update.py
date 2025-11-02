@@ -345,15 +345,16 @@ def add_doctrine_fits_to_wcmkt(df: pd.DataFrame, remote: bool = False):
     db = DatabaseConfig("wcmkt")
     engine = db.remote_engine if remote else db.engine
     print(db.alias + " " + " " + str(remote))
-    session = Session(engine)
-    with session.begin():
-        for index, row in df.iterrows():
-            fit = DoctrineFit(doctrine_name=row["doctrine_name"], fit_name=row["fit_name"], ship_type_id=row["ship_type_id"], ship_name=row["ship_name"], fit_id=row["fit_id"], doctrine_id=row["doctrine_id"], target=row["target"])
-            session.add(fit)
-            print(f"Added {fit.fit_name} to doctrine_fits table")
-    session.commit()
-    session.close()
-    engine.dispose()
+    session = Session(bind=engine)
+    try:
+        with session.begin():
+            for index, row in df.iterrows():
+                fit = DoctrineFit(doctrine_name=row["doctrine_name"], fit_name=row["fit_name"], ship_type_id=row["ship_type_id"], ship_name=row["ship_name"], fit_id=row["fit_id"], doctrine_id=row["doctrine_id"], target=row["target"])
+                session.add(fit)
+                print(f"Added {fit.fit_name} to doctrine_fits table")
+    finally:
+        session.close()
+        engine.dispose()
 
 def check_doctrine_fits_in_wcmkt(doctrine_id: int, remote: bool = False)->pd.DataFrame:
     db = DatabaseConfig("wcmkt")

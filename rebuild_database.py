@@ -30,7 +30,7 @@ from mkts_backend.cli import (
     process_doctrine_stats,
 )
 from mkts_backend.utils.utils import init_databases
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, delete
 
 logger = configure_logging(__name__)
 
@@ -135,7 +135,7 @@ def populate_initial_data():
         try:
             with session.begin():
                 if is_wipe_replace:
-                    session.query(table).delete()
+                    session.execute(delete(table))
                     for idx in range(0, len(data), chunk_size):
                         chunk = data[idx : idx + chunk_size]
                         stmt = insert(t).values(chunk)

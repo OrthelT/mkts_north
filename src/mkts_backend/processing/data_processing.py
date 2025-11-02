@@ -150,7 +150,7 @@ def fill_nulls_from_history(stats: pd.DataFrame) -> pd.DataFrame:
 
     logger.info("Querying history")
     engine = wcmkt_db.engine
-    session = Session(engine)
+    session = Session(bind=engine)
     try:
         with session.begin():
             stmt = select(

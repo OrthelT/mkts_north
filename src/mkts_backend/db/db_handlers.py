@@ -15,7 +15,7 @@ from mkts_backend.utils.utils import (
     get_type_names_from_df,
 )
 from mkts_backend.config.logging_config import configure_logging
-from mkts_backend.db.models import Base, MarketHistory, MarketOrders, RegionOrders, UpdateLog, JitaHistory
+from mkts_backend.db.models import Base, MarketHistory, MarketOrders, RegionOrders, UpdateLog, JitaHistory, Watchlist
 from mkts_backend.config.config import DatabaseConfig
 from mkts_backend.db.db_queries import get_table_length, get_remote_status
 from mkts_backend.esi.esi_requests import fetch_region_orders
@@ -70,7 +70,7 @@ def upsert_database(table: Base, df: pd.DataFrame, remote: bool = False) -> bool
                 logger.info(
                     f"Wiping and replacing {len(data)} rows into {table.__tablename__}"
                 )
-                session.query(table).delete()
+                session.execute(delete(table))
                 logger.info(f"Wiped data from {table.__tablename__}")
 
                 for idx in range(0, len(data), chunk_size):
@@ -291,7 +291,6 @@ def update_history(history_results: list[dict], remote: bool = False):
         return False
     return True
 
-
 def update_market_orders(orders: list[dict], remote: bool = False) -> bool:
     orders_df = pd.DataFrame.from_records(orders)
     type_names = get_type_names_from_df(orders_df)
@@ -315,13 +314,12 @@ def update_market_orders(orders: list[dict], remote: bool = False) -> bool:
         logger.error("Failed to update market orders")
         return False
 
-
 def update_region_orders(region_id: int, order_type: str = 'sell') -> pd.DataFrame:
     orders = fetch_region_orders(region_id, order_type)
     engine = DatabaseConfig("wcmkt").engine
     session = Session(bind=engine)
 
-    session.query(RegionOrders).delete()
+    session.execute(delete(RegionOrders))
     session.commit()
     session.expunge_all()
     session.close()
@@ -408,5 +406,15 @@ def log_update(table_name: str, remote: bool = False):
     engine.dispose()
     return True
 
+def update_watchlist(watchlist: list[Watchlist], remote: bool = False):
+    db = DatabaseConfig("wcmkt")
+    engine = db.remote_engine if remote else db.engine
+    session = Session(bind=engine)
+    with session.begin():
+        session.execute(insert(Watchlist).values(watchlist))
+        session.commit()
+    session.close()
+    engine.dispose()
+    return True
 if __name__ == "__main__":
     pass

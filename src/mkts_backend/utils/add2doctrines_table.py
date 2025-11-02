@@ -69,9 +69,9 @@ def update_items(items: list[Doctrines]):
 
 def add_items_to_doctrines_table(items: list[Doctrines], remote: bool = False):
     engine = mkt_db.remote_engine if remote else mkt_db.engine
-    session = Session(engine)
-    with session.begin():
-        try:
+    session = Session(bind=engine)
+    try:
+        with session.begin():
             added_count = 0
             skipped_count = 0
 
@@ -92,16 +92,13 @@ def add_items_to_doctrines_table(items: list[Doctrines], remote: bool = False):
                     logger.info(f"Added {item.type_name} to doctrines {item.fit_id}")
                     added_count += 1
 
-            session.commit()
             logger.info(f"Completed: {added_count} items added, {skipped_count} duplicates skipped")
-
-        except Exception as e:
-            session.rollback()
-            logger.error(f"Error adding items to doctrines table: {e}")
-            raise
-        finally:
-            session.close()
-            engine.dispose()
+    except Exception as e:
+        logger.error(f"Error adding items to doctrines table: {e}")
+        raise
+    finally:
+        session.close()
+        engine.dispose()
 
 def add_fit_to_doctrine_table(fit_id: int, ship_id: int, ship_name: str, remote: bool = False, dry_run: bool = False)->list[Doctrines] | None:
     """
@@ -128,43 +125,46 @@ def add_fit_to_doctrine_table(fit_id: int, ship_id: int, ship_name: str, remote:
 
 def select_doctrines_table(fit_id: int, remote: bool = False)->list[dict]:
     engine = mkt_db.remote_engine if remote else mkt_db.engine
-    session = Session(engine)
+    session = Session(bind=engine)
     items = []
+    try:
+        with session.begin():
+            result = select(Doctrines).where(Doctrines.fit_id == fit_id)
+            for item in session.scalars(result):
 
-    with session.begin():
-        result = select(Doctrines).where(Doctrines.fit_id == fit_id)
-        for item in session.scalars(result):
+                item = item.__dict__
+                item.pop('_sa_instance_state')
 
-            item = item.__dict__
-            item.pop('_sa_instance_state')
-
-            items.append(item)
-    session.close()
-    engine.dispose()
+                items.append(item)
+    finally:
+        session.close()
+        engine.dispose()
     print(f"Found {len(items)} items in doctrines table")
     return pd.DataFrame(items)
 
 def delete_doctrines_table(fit_id: int, remote: bool = False):
     engine = mkt_db.remote_engine if remote else mkt_db.engine
-    session = Session(engine)
-    with session.begin():
-        count = session.execute(select(func.count(Doctrines.fit_id)).where(Doctrines.fit_id == fit_id))
-        print(f"Count of {fit_id} in doctrines table: {count.scalar()}")
-        session.execute(delete(Doctrines).where(Doctrines.fit_id == fit_id))
-        session.commit()
-    session.close()
-    engine.dispose()
+    session = Session(bind=engine)
+    try:
+        with session.begin():
+            count = session.execute(select(func.count(Doctrines.fit_id)).where(Doctrines.fit_id == fit_id))
+            print(f"Count of {fit_id} in doctrines table: {count.scalar()}")
+            session.execute(delete(Doctrines).where(Doctrines.fit_id == fit_id))
+    finally:
+        session.close()
+        engine.dispose()
     print(f"Deleted {fit_id} from doctrines table")
 
 def count_doctrines_table(fit_id: int, remote: bool = False):
     engine = mkt_db.remote_engine if remote else mkt_db.engine
-    session = Session(engine)
-    with session.begin():
-        result = session.execute(select(func.count(Doctrines.fit_id)).where(Doctrines.fit_id == fit_id))
-        count = result.scalar()
-
-    session.close()
-    engine.dispose()
+    session = Session(bind=engine)
+    try:
+        with session.begin():
+            result = session.execute(select(func.count(Doctrines.fit_id)).where(Doctrines.fit_id == fit_id))
+            count = result.scalar()
+    finally:
+        session.close()
+        engine.dispose()
     print(f"Item from doctrines table: {count}")
     return count
 
