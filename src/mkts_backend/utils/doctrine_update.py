@@ -88,17 +88,39 @@ class Doctrine:
             updated_items.append(add_fit_to_doctrine_table(fit_id=fit_id, ship_id=ship_id, ship_name=ship_name, remote=self.remote, dry_run=False))
         return updated_items
 
-def add_ship_target():
+def add_ship_target(fit_id: int, target: int, remote: bool = False)->bool:
     db = DatabaseConfig("wcmkt")
-    stmt = text("""INSERT INTO ship_targets ('fit_id', 'fit_name', 'ship_id', 'ship_name', 'ship_target', 'created_at')
-    VALUES (494, '2507  WC-EN Shield DPS HFI v1.0', 33157, 'Hurricane Fleet Issue', 100, '2025-07-05 00:00:00')""")
-    engine = db.remote_engine
+    engine = db.remote_engine if remote else db.engine
+    data = []
     with engine.connect() as conn:
-        conn.execute(stmt)
-        conn.commit()
-        print("Ship target added")
-    conn.close()
-    engine.dispose()
+        stmt = text("SELECT * FROM doctrine_fits WHERE fit_id = :fit_id")
+        result = conn.execute(stmt, {"fit_id": fit_id})
+        data = result.fetchall()
+        if len(data) > 0:
+            for row in data:
+
+                fit_name = row[2]
+                ship_id = row[3]
+                ship_name = row[6]
+                created_at = datetime.datetime.strftime(datetime.datetime.now(datetime.timezone.utc), '%Y-%m-%d %H:%M:%S')
+                print(f"fit_name: {fit_name}, ship_id: {ship_id}, ship_name: {ship_name}, created_at: {created_at}")
+
+                stmt2 = text("""INSERT INTO ship_targets ('fit_id', 'fit_name', 'ship_id', 'ship_name', 'ship_target', 'created_at')
+                VALUES (:fit_id, :fit_name, :ship_id, :ship_name, :ship_target, :created_at)""")
+                insert_data = {
+                    "fit_id": fit_id,
+                    "fit_name": fit_name,
+                    "ship_id": ship_id,
+                    "ship_name": ship_name,
+                    "ship_target": target,
+                    "created_at": created_at
+                }
+                conn.execute(stmt2, insert_data)
+                conn.commit()
+                print(f"Ship target added for fit_name: {fit_name}, ship_id: {ship_id}, ship_name: {ship_name}")
+            conn.close()
+            engine.dispose()
+    return True
 
 def add_doctrine_map_from_fittings_doctrine_fittings(doctrine_id: int, remote: bool = False):
     db = DatabaseConfig("fittings")
@@ -276,8 +298,6 @@ def get_fit_dicts(doctrine_id: int, remote: bool = False) -> dict[int, dict[int,
             items.append({"type_id": id, "count": count})
         fits[k] = items
     return fits
-
-
 
 def add_doctrine_type_info_to_watchlist(doctrine_id: int, remote: False):
     watchlist_ids = get_watchlist_ids(remote=remote)
@@ -595,5 +615,5 @@ def rebuild_doctrine_fits_table():
 
 
 if __name__ == "__main__":
-    rebuild_doctrine_fits_table()
+    pass
 
