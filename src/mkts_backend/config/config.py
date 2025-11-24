@@ -16,7 +16,7 @@ class DatabaseConfig:
 
     _db_paths = {
         "wcnorth": "wcmktnorth2.db",
-        "sde": "sdeinfo.db",
+        "sde": "sdeinfo2.db",
         "fittings": "wcfitting.db",
         "wc2": "wcmkt2.db",
     }
