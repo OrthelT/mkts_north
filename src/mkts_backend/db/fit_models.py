@@ -327,14 +327,6 @@ class JoinedInvTypes(FitBase):
 
 
 if __name__ == "__main__":
-    # Quick test to ensure models are properly defined
-    from mkts_backend.config.config import DatabaseConfig
+    pass
     
-    # Get the wcfitting database config
-    db_config = DatabaseConfig('wcfitting')
     
-    # Create tables if they don't exist
-    FitBase.metadata.create_all(db_config.engine)
-    
-    print("✓ All wcfitting models loaded successfully")
-    print(f"✓ Tables: {', '.join(FitBase.metadata.tables.keys())}")

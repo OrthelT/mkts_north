@@ -1,5 +1,6 @@
 import datetime
 from dataclasses import dataclass, field
+from pickle import FALSE
 from numpy._core.multiarray import scalar
 from numpy.ma import count
 import pandas as pd
@@ -15,6 +16,7 @@ from mkts_backend.db.sde_models import SdeInfo
 from mkts_backend.utils.add2doctrines_table import select_doctrines_table, add_fit_to_doctrine_table
 from mkts_backend.utils.utils import get_type_name
 from mkts_backend.utils.db_utils import add_missing_items_to_watchlist
+
 doctrines_fields = ['id', 'fit_id', 'ship_id', 'ship_name', 'hulls', 'type_id', 'type_name', 'fit_qty', 'fits_on_mkt', 'total_stock', 'price', 'avg_vol', 'days', 'group_id', 'group_name', 'category_id', 'category_name', 'timestamp']
 logger = configure_logging(__name__)
 
@@ -27,7 +29,7 @@ fit_name = '2507  WC-EN Shield DPS HFI v1.0'
 ship_type_id = 33157
 
 @dataclass
-class DoctrineFit:
+class DoctrineFitData:
     fit_id: int
     ship_id: int
     ship_name: str
@@ -204,7 +206,7 @@ def add_hurricane_fleet_issue_to_doctrines():
 
     return True
 
-def add_doctrine_fit(DoctrineFit: DoctrineFit):
+def add_doctrine_fit(DoctrineFit: DoctrineFitData):
     db = DatabaseConfig("wcmkt")
     stmt = text("""INSERT INTO doctrines ('fit_id', 'fit_name', 'ship_id', 'ship_name', 'ship_target', 'created_at')
     VALUES (494, '2507  WC-EN Shield DPS HFI v1.0', 33157, 'Hurricane Fleet Issue', 100, '2025-07-05 00:00:00')""")
@@ -216,21 +218,21 @@ def add_doctrine_fit(DoctrineFit: DoctrineFit):
     conn.close()
     engine.dispose()
 
-def add_lead_ship():
-    hfi = LeadShips(doctrine_name=doctrine_name, doctrine_id=84, lead_ship=ship_id, fit_id=doctrine_fit_id)
+def add_lead_ship(lead_ship: LeadShips):
     db = DatabaseConfig("wcmkt")
     engine = db.remote_engine
     session = Session(bind=engine)
     with session.begin():
-        session.add(hfi)
+        session.add(lead_ship)
         session.commit()
         print("Lead ship added")
     session.close()
+    engine.dispose()
 
-def process_hfi_fit_items(type_ids: list[int]) -> list[DoctrineFit]:
+def process_hfi_fit_items(type_ids: list[int]) -> list[DoctrineFitData]:
     items = []
     for type_id in type_ids:
-        item = DoctrineFit(
+        item = DoctrineFitData(
             fit_id=494,
             ship_id=33157,
             ship_name='Hurricane Fleet Issue',
@@ -274,6 +276,8 @@ def get_fit_dicts(doctrine_id: int, remote: bool = False) -> dict[int, dict[int,
             items.append({"type_id": id, "count": count})
         fits[k] = items
     return fits
+
+
 
 def add_doctrine_type_info_to_watchlist(doctrine_id: int, remote: False):
     watchlist_ids = get_watchlist_ids(remote=remote)
@@ -478,5 +482,118 @@ def get_watch_doctrines(remote: bool = False):
     engine.dispose()
     return result
 
+def add_doctrine_info_to_doctrines_table(doctrine_id: int, remote: bool = False):
+    db = DatabaseConfig("fittings")
+    engine = db.engine
+    df = pd.read_sql_query(text("SELECT * FROM watch_doctrines"), engine)
+    engine.dispose()
+    df2 = df.copy()
+    df2.rename(columns={"id": "doctrine_id"}, inplace=True)
+    df2.drop(columns=["icon_url", "description", "created", "last_updated"], inplace=True)
+    engine.dispose()
+    db = DatabaseConfig("wcmkt")
+    engine = db.remote_engine if remote else db.engine
+    with engine.connect() as conn:
+        df2.to_sql("doctrine_info", conn, if_exists="replace", index=False)
+        conn.commit()
+    conn.close()
+    engine.dispose()
+    logger.info(f"Added {len(df2)} rows to doctrines table")
+
+def get_doctrine_fits(doctrine_id: int, remote: bool = False) -> pd.DataFrame:
+
+    db = DatabaseConfig("fittings")
+    engine = db.remote_engine if remote else db.engine
+    doctrine_name = None
+    with engine.connect() as conn:
+        stmt = text("SELECT fitting_id FROM fittings_doctrine_fittings WHERE doctrine_id = :doctrine_id")
+        result = conn.execute(stmt, {"doctrine_id": doctrine_id})
+        fit_info_list = result.fetchall()
+        fit_ids = [row[0] for row in fit_info_list]
+        fit_info = []
+        for fit_id in fit_ids:
+            stmt2 = text("SELECT name, ship_type_id, id FROM fittings_fitting WHERE id = :fit_id")
+            result2 = conn.execute(stmt2, {"fit_id": fit_id})
+            data = result2.fetchall()
+            name = data[0][0]
+            ship_type_id = data[0][1]
+            fit_info.append({"fit_name": name, "ship_type_id": ship_type_id, "doctrine_id": doctrine_id, "fit_id": fit_id})
+        stmt2 = text("SELECT name, id FROM fittings_doctrine WHERE id = :doctrine_id")
+        result2 = conn.execute(stmt2, {"doctrine_id": doctrine_id})
+        data = result2.fetchall()
+        print(data)
+        doctrine_name = data[0][0]
+        doctrine_id = data[0][1]
+            
+    conn.close()
+    engine.dispose()
+    df = pd.DataFrame(fit_info)
+    df['doctrine_name'] = doctrine_name
+    df['doctrine_id'] = doctrine_id
+    db = DatabaseConfig("sde")
+    ship_type_ids = df["ship_type_id"].unique().tolist()
+    engine = db.engine
+    with engine.connect() as conn:
+        for ship_type_id in ship_type_ids:
+            stmt3 = text("SELECT typeid, typename as ship_name FROM inv_info WHERE typeID = :ship_type_id")
+            result3 = conn.execute(stmt3, {"ship_type_id": ship_type_id})
+            data = result3.fetchall()
+            if len(data) > 0:
+                for row in data:
+                    type_id = row[0]
+                    type_name = row[1]
+                    df.loc[df["ship_type_id"] == ship_type_id, "ship_name"] = type_name
+            else:
+                logger.error(f"No data found for ship type id: {ship_type_id}")
+    conn.close()
+    engine.dispose()
+    df2 = df.copy()
+    df2 = df2[["doctrine_name", "fit_name", "ship_type_id", "doctrine_id", "fit_id", "ship_name"]]
+    df3 = get_ship_target(df2)
+    return df3
+
+def get_ship_target(df: pd.DataFrame) -> pd.DataFrame:
+    fit_ids = df["fit_id"].unique().tolist()
+    db = DatabaseConfig("wcmkt")
+    engine = db.engine
+    with engine.connect() as conn:
+        for fit_id in fit_ids:
+            stmt = text("SELECT ship_target FROM ship_targets WHERE fit_id = :fit_id")
+            result = conn.execute(stmt, {"fit_id": fit_id})
+            data = result.fetchall()
+            if len(data) > 0:
+                for row in data:
+                    target = row[0]
+                    df.loc[df["fit_id"] == fit_id, "target"] = target
+            else:
+                logger.warning(f"No data found for fit id: {fit_id} setting target to 20")
+                df.loc[df["fit_id"] == fit_id, "target"] = 20
+    conn.close()
+    engine.dispose()
+    return df
+
+def rebuild_doctrine_fits_table():
+    db = DatabaseConfig("wcmkt")
+    engine = db.engine
+    with engine.connect() as conn:
+        df2 = pd.read_sql_table("doctrine_fits", conn)
+    conn.close()
+    engine.dispose()
+    engine = db.remote_engine
+    with engine.connect() as conn:
+        stmt = text("DROP TABLE IF EXISTS doctrine_fits")
+        conn.execute(stmt)
+        Base.metadata.create_all(engine)
+        stmt = text("INSERT INTO doctrine_fits (doctrine_name, fit_name, ship_type_id, doctrine_id, fit_id, ship_name, target) VALUES (:doctrine_name, :fit_name, :ship_type_id, :doctrine_id, :fit_id, :ship_name, :target)")
+        for index, row in df2.iterrows():
+            conn.execute(stmt, {"doctrine_name": row["doctrine_name"], "fit_name": row["fit_name"], "ship_type_id": row["ship_type_id"], "doctrine_id": row["doctrine_id"], "fit_id": row["fit_id"], "ship_name": row["ship_name"], "target": row["target"]})
+        conn.commit()
+    
+    conn.close()
+    engine.dispose()
+    print("Doctrine fits table rebuilt")
+
+
 if __name__ == "__main__":
-    pass
+    rebuild_doctrine_fits_table()
+
