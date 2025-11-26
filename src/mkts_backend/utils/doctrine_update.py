@@ -69,7 +69,8 @@ class Doctrine:
 
     def get_all_fit_ids(self)->list[int]:
         fits_dict = get_fit_dicts(self.doctrine_id, remote=self.remote)
-        return(fits_dict.keys())
+        keys = list(fits_dict.keys())
+        return keys
 
     def get_all_ships(self)->list[int]:
         all_ships = []
@@ -103,7 +104,7 @@ def add_ship_target(fit_id: int, target: int, remote: bool = False)->bool:
                 ship_id = row[3]
                 ship_name = row[6]
                 created_at = datetime.datetime.strftime(datetime.datetime.now(datetime.timezone.utc), '%Y-%m-%d %H:%M:%S')
-                print(f"fit_name: {fit_name}, ship_id: {ship_id}, ship_name: {ship_name}, created_at: {created_at}")
+                logger.info(f"fit_name: {fit_name}, ship_id: {ship_id}, ship_name: {ship_name}, created_at: {created_at}")
 
                 stmt2 = text("""INSERT INTO ship_targets ('fit_id', 'fit_name', 'ship_id', 'ship_name', 'ship_target', 'created_at')
                 VALUES (:fit_id, :fit_name, :ship_id, :ship_name, :ship_target, :created_at)""")
@@ -117,7 +118,7 @@ def add_ship_target(fit_id: int, target: int, remote: bool = False)->bool:
                 }
                 conn.execute(stmt2, insert_data)
                 conn.commit()
-                print(f"Ship target added for fit_name: {fit_name}, ship_id: {ship_id}, ship_name: {ship_name}")
+                logger.info(f"Ship target added for fit_name: {fit_name}, ship_id: {ship_id}, ship_name: {ship_name}")
             conn.close()
             engine.dispose()
     return True
@@ -569,10 +570,10 @@ def get_doctrine_fits(doctrine_id: int, remote: bool = False) -> pd.DataFrame:
     engine.dispose()
     df2 = df.copy()
     df2 = df2[["doctrine_name", "fit_name", "ship_type_id", "doctrine_id", "fit_id", "ship_name"]]
-    df3 = get_ship_target(df2)
+    df3 = get_ship_targets_df(df2)
     return df3
 
-def get_ship_target(df: pd.DataFrame) -> pd.DataFrame:
+def get_ship_targets_df(df: pd.DataFrame) -> pd.DataFrame:
     fit_ids = df["fit_id"].unique().tolist()
     db = DatabaseConfig("wcmkt")
     engine = db.engine
@@ -591,6 +592,23 @@ def get_ship_target(df: pd.DataFrame) -> pd.DataFrame:
     conn.close()
     engine.dispose()
     return df
+
+def get_ship_target(fit_id: int, remote: bool = False) -> int:
+    db = DatabaseConfig("wcmkt")
+    engine = db.remote_engine if remote else db.engine
+    with engine.connect() as conn:
+        stmt = text("SELECT ship_target FROM ship_targets WHERE fit_id = :fit_id")
+        result = conn.execute(stmt, {"fit_id": fit_id})
+        data = result.fetchall()
+        print(data)
+        if len(data) > 0:
+            target = data[0][0]
+        else:
+            target = None
+        print(target)
+    conn.close()
+    engine.dispose()
+    return target
 
 def rebuild_doctrine_fits_table():
     db = DatabaseConfig("wcmkt")
@@ -613,7 +631,42 @@ def rebuild_doctrine_fits_table():
     engine.dispose()
     print("Doctrine fits table rebuilt")
 
+def add_doctrine_targets(doctrine_id: int, target: int, exceptions: dict[int, int] = {}, remote: bool = False):
+    doctrine = Doctrine(doctrine_id=doctrine_id)
+    for fit_id in doctrine.get_all_fit_ids():
+        existing_target = get_ship_target(fit_id, remote=remote)
+
+        if fit_id in exceptions:
+            target = exceptions[fit_id]
+
+        if existing_target is None:
+            add_ship_target(fit_id, target, remote=remote)
+            logger.info(f"Ship target {target} added for fit id {fit_id}")
+        else:
+            logger.info(f"Ship target for fit id {fit_id} is {existing_target}, no update needed")
+    logger.info(f"Doctrine targets added for doctrine id {doctrine_id}")
+
+def remove_doctrine_targets(doctrine_id: int, remote: bool = False):
+    db = DatabaseConfig("wcmkt")
+    engine = db.remote_engine if remote else db.engine
+
+    fit_ids = get_fit_ids(doctrine_id)
+    for fit_id in fit_ids:
+        remove_ship_target(fit_id, remote=remote)
+        logger.info(f"Ship target removed for fit id {fit_id}")
+    logger.info(f"Doctrine targets removed for doctrine id {doctrine_id}")
+
+def remove_ship_target(fit_id: int, remote: bool = False):
+    db = DatabaseConfig("wcmkt")
+    engine = db.remote_engine if remote else db.engine
+    with engine.connect() as conn:
+        stmt = text("DELETE FROM ship_targets WHERE fit_id = :fit_id")
+        conn.execute(stmt, {"fit_id": fit_id})
+        conn.commit()
+    conn.close()
+    engine.dispose()
 
 if __name__ == "__main__":
     pass
+
 
