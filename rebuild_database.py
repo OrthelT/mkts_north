@@ -36,14 +36,14 @@ logger = configure_logging(__name__)
 
 def backup_existing_database():
     """Backup the existing database file if it exists"""
-    db_path = Path("wcmktnorth.db")
+    db_path = Path("wcmktnorth2.db")
 
     if not db_path.exists():
         logger.info("No existing database to backup")
         return None
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_path = Path(f"wcmktnorth_backup_{timestamp}.db")
+    backup_path = Path(f"wcmktnorth2_backup_{timestamp}.db")
 
     logger.info(f"Backing up existing database to {backup_path}")
     shutil.copy2(db_path, backup_path)
@@ -53,7 +53,7 @@ def backup_existing_database():
 
 def delete_local_database():
     """Delete the local database file"""
-    db_path = Path("wcmktnorth.db")
+    db_path = Path("wcmktnorth2.db")
 
     if db_path.exists():
         logger.info(f"Deleting local database: {db_path}")
@@ -67,7 +67,7 @@ def create_fresh_database():
     logger.info("Creating fresh database with schema")
 
     # Create a fresh local database
-    db_url = "sqlite+libsql:///wcmktnorth.db"
+    db_url = "sqlite+libsql:///wcmktnorth2.db"
     engine = create_engine(db_url)
 
     # Create all tables from Base metadata
@@ -108,14 +108,14 @@ def populate_initial_data():
     # Save original function
     original_upsert = update_market_orders.__globals__['upsert_database']
 
-    def local_upsert_database(table, df):
+    def local_upsert_database(table, df, remote: bool = False):
         """Modified upsert that only writes to local database"""
         from sqlalchemy.orm import Session
         from sqlalchemy import select, insert, func, or_, delete
         from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
         db = DatabaseConfig("wcmkt")
-        local_engine = db.engine  # Use local engine instead of remote
+        local_engine = db.engine if not remote else db.remote_engine
         session = Session(bind=local_engine)
 
         t = table.__table__
@@ -253,7 +253,7 @@ def upload_to_turso():
         load_dotenv()
 
         # Get Turso database name from URL
-        turso_url = os.getenv("wcmktnorth_url")
+        turso_url = os.getenv("TURSO_WCMKTNORTH2_URL")
         if not turso_url:
             logger.error("Turso URL not found in environment")
             return False
@@ -267,12 +267,12 @@ def upload_to_turso():
         logger.info("=" * 80)
         logger.info("IMPORTANT: To upload the database to Turso, run these commands:")
         logger.info("=" * 80)
-        logger.info(f"turso db shell {db_name} < wcmktnorth.db.sql")
+        logger.info(f"turso db shell {db_name} < wcmktnorth2.db.sql")
         logger.info("OR")
-        logger.info(f"turso db upload {db_name} wcmktnorth.db")
+        logger.info(f"turso db upload {db_name} wcmktnorth2.db")
         logger.info("=" * 80)
         logger.info("Note: You may need to export the database to SQL format first:")
-        logger.info("sqlite3 wcmktnorth.db .dump > wcmktnorth.db.sql")
+        logger.info("sqlite3 wcmktnorth2.db .dump > wcmktnorth2.db.sql")
         logger.info("=" * 80)
 
         # Try using turso CLI if available
@@ -298,7 +298,7 @@ def upload_to_turso():
         # Export database to SQL
         logger.info("Exporting database to SQL format...")
         result = subprocess.run(
-            ["sqlite3", "wcmktnorth.db", ".dump"],
+            ["sqlite3", "wcmktnorth2.db", ".dump"],
             capture_output=True,
             text=True,
             timeout=300
@@ -308,9 +308,9 @@ def upload_to_turso():
             return False
 
         sql_dump = result.stdout
-        with open("wcmktnorth.db.sql", "w") as f:
+        with open("wcmktnorth2.db.sql", "w") as f:
             f.write(sql_dump)
-        logger.info("Database exported to wcmktnorth.db.sql")
+        logger.info("Database exported to wcmktnorth2.db.sql")
 
         # Upload to Turso
         logger.info(f"Uploading to Turso database '{db_name}'...")
@@ -327,7 +327,7 @@ def upload_to_turso():
         if result.returncode != 0:
             logger.error(f"Failed to upload to Turso: {result.stderr}")
             logger.info("You can manually upload with:")
-            logger.info(f"  turso db shell {db_name} < wcmktnorth.db.sql")
+            logger.info(f"  turso db shell {db_name} < wcmktnorth2.db.sql")
             return False
 
         logger.info("Database uploaded to Turso successfully")
@@ -336,7 +336,7 @@ def upload_to_turso():
     except subprocess.TimeoutExpired:
         logger.error("Upload timed out - database may be too large")
         logger.info("Try uploading manually with:")
-        logger.info(f"  turso db shell {db_name} < wcmktnorth.db.sql")
+        logger.info(f"  turso db shell {db_name} < wcmktnorth2.db.sql")
         return False
     except Exception as e:
         logger.error(f"Failed to upload to Turso: {e}")

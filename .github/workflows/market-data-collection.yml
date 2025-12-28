@@ -10,7 +10,7 @@ on:
       include_history:
         description: 'Include historical data processing'
         required: false
-        default: 'false'
+        default: false
         type: boolean
 
 jobs:
@@ -72,8 +72,8 @@ jobs:
         echo "TURSO_SDE_TOKEN=${{ secrets.TURSO_SDE_TOKEN }}" >> $GITHUB_ENV
         echo "TURSO_FITTING_URL=${{ secrets.TURSO_FITTING_URL }}" >> $GITHUB_ENV
         echo "TURSO_FITTING_TOKEN=${{ secrets.TURSO_FITTING_TOKEN }}" >> $GITHUB_ENV
-        echo "wcmktnorth_url=${{ secrets.WCMKTNORTH_URL }}" >> $GITHUB_ENV
-        echo "wcmktnorth_token=${{ secrets.WCMKTNORTH_TOKEN }}" >> $GITHUB_ENV
+        echo "TURSO_WCMKTNORTH2_URL=${{ secrets.TURSO_WCMKTNORTH2_URL }}" >> $GITHUB_ENV
+        echo "TURSO_WCMKTNORTH2_TOKEN=${{ secrets.TURSO_WCMKTNORTH2_TOKEN }}" >> $GITHUB_ENV
 
     #- name: Set up Google Service Account
     - name: Write Google Service Account JSON
@@ -100,8 +100,8 @@ jobs:
         echo "SECRET_KEY is set: $([ -n "$SECRET_KEY" ] && echo "YES" || echo "NO")"
         echo "REFRESH_TOKEN is set: $([ -n "$REFRESH_TOKEN" ] && echo "YES" || echo "NO")"
         echo "REFRESH_TOKEN length: ${#REFRESH_TOKEN}"
-        echo "wcmktnorth_url is set: $([ -n "$wcmktnorth_url" ] && echo "YES" || echo "NO")"
-        echo "wcmktnorth_token is set: $([ -n "$wcmktnorth_token" ] && echo "YES" || echo "NO")"
+        echo "TURSO_WCMKTNORTH2_URL is set: $([ -n "$TURSO_WCMKTNORTH2_URL" ] && echo "YES" || echo "NO")"
+        echo "TURSO_WCMKTNORTH2_TOKEN is set: $([ -n "$TURSO_WCMKTNORTH2_TOKEN" ] && echo "YES" || echo "NO")"
         echo "TURSO_SDE_URL is set: $([ -n "$TURSO_SDE_URL" ] && echo "YES" || echo "NO")"
         echo "TURSO_SDE_TOKEN is set: $([ -n "$TURSO_SDE_TOKEN" ] && echo "YES" || echo "NO")"
         echo "TURSO_FITTING_URL is set: $([ -n "$TURSO_FITTING_URL" ] && echo "YES" || echo "NO")"

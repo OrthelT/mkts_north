@@ -237,4 +237,18 @@ def check_ship_target(fit_id: int):
     engine.dispose()
     return target
 if __name__ == "__main__":
-    pass
+    bckup = create_engine("sqlite+libsql:///archive/wcmktnorth2_backup_20251227_201613.db")
+
+    with bckup.connect() as conn:
+        df = pd.read_sql_table("ship_targets", conn)
+        print(df.head())
+    conn.close()
+    bckup.dispose()
+
+    db = DatabaseConfig("wcmkt")
+    engine = db.engine
+    with engine.connect() as conn:
+        df.to_sql("ship_targets", conn, if_exists="replace", index=True)
+        conn.commit()
+    conn.close()
+    engine.dispose()

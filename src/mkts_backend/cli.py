@@ -22,7 +22,7 @@ from mkts_backend.processing.data_processing import (
     calculate_market_stats,
     calculate_doctrine_stats,
 )
-from sqlalchemy import text
+from sqlalchemy import FallbackAsyncAdaptedQueuePool, text
 from mkts_backend.config.config import DatabaseConfig
 from mkts_backend.config.esi_config import ESIConfig
 from mkts_backend.esi.esi_requests import fetch_market_orders
@@ -157,24 +157,25 @@ def process_jita_history():
 def process_market_stats(remote: bool = True):
     logger.info("Calculating market stats")
 
-
     try:
         market_stats_df = calculate_market_stats(remote=remote)
     except Exception as e:
         logger.error(f"Failed to calculate market stats: {e}")
-        return False
+        return False, None
     try:
         logger.info("Validating market stats columns")
         valid_market_stats_columns = MarketStats.__table__.columns.keys()
+        logger.info(f"Validating market stats columns: {valid_market_stats_columns}")
+        logger.info(f"Market stats dataframe: {market_stats_df.columns}")
         market_stats_df = validate_columns(market_stats_df, valid_market_stats_columns)
         if len(market_stats_df) > 0:
             logger.info(f"Market stats validated: {len(market_stats_df)} items")
         else:
             logger.error("Failed to validate market stats")
-            return False
+            return False, None
     except Exception as e:
         logger.error(f"Failed to get market stats columns: {e}")
-        return False
+        return False, None
     try:
         logger.info("Updating market stats in database")
         status = upsert_database(MarketStats, market_stats_df, remote=remote)
@@ -299,7 +300,7 @@ def main(history: bool = False):
         logger.info("Skipping local database validation - local db only used for reads")
     else:
         logger.info("Local update mode. All operations use local database only.")
-        
+
     print("=" * 80)
     print("Fetching market orders")
     print("=" * 80)
@@ -317,7 +318,7 @@ def main(history: bool = False):
         logger.info(f"Watchlist found: {len(watchlist)} items")
     else:
         logger.error("No watchlist found. Unable to proceed further.")
-  
+
 
     if history:
         logger.info("Processing history ")

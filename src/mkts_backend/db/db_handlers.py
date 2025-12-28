@@ -28,7 +28,7 @@ sde_db = DatabaseConfig("sde")
 
 
 def upsert_database(table: Base, df: pd.DataFrame, remote: bool = False) -> bool:
-    WIPE_REPLACE_TABLES = ["marketstats", "doctrines", "marketorders", "market_history"]
+    WIPE_REPLACE_TABLES = ["marketstats", "doctrines"]
     tabname = table.__tablename__
     is_wipe_replace = tabname in WIPE_REPLACE_TABLES
     logger.info(f"Processing table: {tabname}, wipe_replace: {is_wipe_replace}")
